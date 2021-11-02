@@ -1,2 +1,2 @@
-# h2ox-data-ecmwf
-This repo is for downloading ECMWF data from the Copernicus Data Store and pushing it to cloud storage
+# h2ox-ai
+This repo is for training machine learning models for the Wave2Web hackathon.
