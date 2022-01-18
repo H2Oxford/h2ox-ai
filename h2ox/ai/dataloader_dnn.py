@@ -25,6 +25,7 @@ class w2w_dnn_loader(Dataset):
         autoregressive,
         start_date=None,
         end_date=None,
+        target_var: str = "PRESENT_STORAGE_TMC",
     ):
 
         self.segment = segment
@@ -37,18 +38,18 @@ class w2w_dnn_loader(Dataset):
         df.index = pd.to_datetime(df.index)
 
         if normalise:
-            self.Y_mean = df["PRESENT_STORAGE_TMC"].mean()
-            self.Y_std = df["PRESENT_STORAGE_TMC"].std()
-            df["PRESENT_STORAGE_TMC"] = (
-                df["PRESENT_STORAGE_TMC"] - df["PRESENT_STORAGE_TMC"].mean()
-            ) / df["PRESENT_STORAGE_TMC"].std()
+            self.Y_mean = df[target_var].mean()
+            self.Y_std = df[target_var].std()
+            df[target_var] = (df[target_var] - df[target_var].mean()) / df[
+                target_var
+            ].std()
 
         ### construct the features
-        df["Y"] = df["PRESENT_STORAGE_TMC"]
-        df["Y_1"] = df["PRESENT_STORAGE_TMC"].shift(-1)
+        df["Y"] = df[target_var]
+        df["Y_1"] = df[target_var].shift(-1)
 
         for ii in range(5, targets_forecast, 5):
-            df[f"Y_{ii}"] = df["PRESENT_STORAGE_TMC"].shift(-1 * ii)
+            df[f"Y_{ii}"] = df[target_var].shift(-1 * ii)
 
         # maybe normalise
         if normalise:
@@ -74,7 +75,7 @@ class w2w_dnn_loader(Dataset):
         ### set up the records -> a dict with int_index:shuffled(dt_index)
 
         valid_idxs = (
-            (~pd.isna(df["PRESENT_STORAGE_TMC"]))
+            (~pd.isna(df[target_var]))
             & (~pd.isna(df["tp"]))
             & (~pd.isna(df["t2m"]))
             & (~(pd.isna(df[[f"tp_{ii}" for ii in range(15)]]).any(axis=1)))

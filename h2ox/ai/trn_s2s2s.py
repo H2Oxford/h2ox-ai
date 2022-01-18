@@ -4,7 +4,6 @@ logging.basicConfig(level=logging.INFO)
 from datetime import timedelta
 import pandas as pd
 from datetime import timedelta, datetime
-from torchsummary import summary
 from sklearn.metrics import r2_score
 
 from tqdm import tqdm
@@ -15,11 +14,8 @@ import numpy as np
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from sklearn.metrics import r2_score
-import matplotlib.pyplot as plt
 
-from src.w2w.dataloader_dnn import w2w_dnn_loader
-from src.w2w.dataloader_lstm import w2w_lstm_loader
-from matplotlib.collections import LineCollection
+from h2ox.ai.dataloader_lstm import w2w_lstm_loader
 
 
 def weighted_mse_loss(input, target, weight):
@@ -196,7 +192,9 @@ def train(
 
 
 def main(PARAMS):
-
+    dataset = "3zscore"
+    dataset = "18x2mo_split"
+    dataset = "zscore"
     root = os.getcwd()
 
     device = torch.device(PARAMS["DEVICE"])
@@ -204,7 +202,7 @@ def main(PARAMS):
 
     trn_dataset = w2w_lstm_loader(
         csv_data_path=os.path.join(
-            root, "wave2web_data", "refresh_09-27", f'{PARAMS["SITE"]}_3zscore.csv'
+            root, "data", "interim", f'{PARAMS["SITE"]}_{dataset}.csv'
         ),
         horizon_days=90,
         lead_days=60,
@@ -213,7 +211,7 @@ def main(PARAMS):
     )
     val_dataset = w2w_lstm_loader(
         csv_data_path=os.path.join(
-            root, "wave2web_data", "refresh_09-27", f'{PARAMS["SITE"]}_3zscore.csv'
+            root, "data", "interim", f'{PARAMS["SITE"]}_{dataset}.csv'
         ),
         horizon_days=90,
         lead_days=60,
@@ -237,7 +235,7 @@ def main(PARAMS):
 
     whole_dataset = w2w_lstm_loader(
         csv_data_path=os.path.join(
-            root, "wave2web_data", "refresh_09-27", f'{PARAMS["SITE"]}_3zscore.csv'
+            root, "data", "interim", f'{PARAMS["SITE"]}_{dataset}.csv'
         ),
         horizon_days=90,
         lead_days=60,
@@ -256,7 +254,7 @@ def main(PARAMS):
 
     test_dataset = w2w_lstm_loader(
         csv_data_path=os.path.join(
-            root, "wave2web_data", "refresh_09-27", f'{PARAMS["SITE"]}_3zscore.csv'
+            root, "data", "interim", f'{PARAMS["SITE"]}_{dataset}.csv'
         ),
         horizon_days=90,
         lead_days=60,
@@ -304,7 +302,6 @@ def main(PARAMS):
         os.path.join(
             os.getcwd(),
             "w2w_results",
-            "refresh_09-27",
             f"{whole_loader.dataset.site}_weights.pth",
         ),
     )
@@ -325,8 +322,8 @@ def perturb(pert_amt, model, device):
     pert_dataset = w2w_lstm_loader(
         csv_data_path=os.path.join(
             os.getcwd(),
-            "wave2web_data",
-            "refresh_09-27",
+            "data",
+            "interim",
             f'{PARAMS["SITE"]}_3zscore.csv',
         ),
         horizon_days=90,
@@ -376,7 +373,6 @@ def perturb(pert_amt, model, device):
         os.path.join(
             os.getcwd(),
             "w2w_results",
-            "refresh_09-27",
             pert_loader.dataset.site + f"p{pert_amt}_full_result.csv",
         )
     )
@@ -460,7 +456,6 @@ def test_output(model, test_loader, device):
             os.path.join(
                 os.getcwd(),
                 "w2w_results",
-                "refresh_09-27",
                 test_loader.dataset.site + "_r2score.json",
             ),
             "w",
@@ -501,7 +496,6 @@ def whole_visualise_and_output(model, whole_loader, device):
         os.path.join(
             os.getcwd(),
             "w2w_results",
-            "refresh_09-27",
             whole_loader.dataset.site + "_full_result.csv",
         )
     )
@@ -551,9 +545,9 @@ if __name__ == "__main__":
         PARAMS = dict(
             SITE=kk,
             BATCH_SIZE=256,
-            DATALOADER_WORKERS=8,
+            DATALOADER_WORKERS=1,
             LR=0.05,
-            DEVICE="cuda",
+            DEVICE="cpu",  # "cuda"  "cpu"
             EPOCHS=40,
             N_LAYERS=2,
             HIDDEN_DIM=8,
