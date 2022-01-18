@@ -1,6 +1,7 @@
+from typing import List
 import os
 from datetime import datetime
-
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import torch
@@ -18,16 +19,16 @@ class w2w_lstm_loader(Dataset):
 
     def __init__(
         self,
-        csv_data_path,
-        horizon_days,
-        lead_days,
-        segment,
-        site,
-        perturb=0,
-        shuffle_records=True,
-        targets=True,
-        start_date=None,
-        end_date=None,
+        csv_data_path: Path,
+        horizon_days: int,  #
+        lead_days: int,  #
+        segment: List[str],
+        site: str,
+        perturb: int = 0,
+        shuffle_records: bool = True,
+        targets: bool = True,
+        start_date: bool = None,
+        end_date: bool = None,
     ):
 
         self.segment = segment
@@ -118,6 +119,7 @@ class w2w_lstm_loader(Dataset):
             historic_cols,
         ].values
 
+        #
         arrs = [
             self.df.loc[idx_dt, [f"tp_{ii}" for ii in range(1, 15)]].values
             * (1.0 + np.arange(14) / 13.0 * self.perturb),
@@ -215,14 +217,28 @@ if __name__ == "__main__":
     #    X, Y = loader.__getitem__(ii)"""
 
     whole_dataset = w2w_lstm_loader(
-        csv_data_path=os.path.join(root, "wave2web_data", f"kabini_3zscore.csv"),
-        horizon_days=90,
-        lead_days=60,
+        csv_data_path=os.path.join(root, "data", "interim", f"kabini_zscore.csv"),
+        site="kabini",
+        horizon_days=90,  # forecast days (future1 + future2)
+        lead_days=60,  # historic days
         segment=["trn", "val", "test", "deploy"],
         targets=False,
         shuffle_records=False,
     )
 
-    loader = DataLoader(whole_dataset, batch_size=40, num_workers=6, shuffle=False)
-    for X in loader:
-        print([(kk, xx.shape) for kk, xx in X.items()])
+    ## first
+    # whole_dataset[0]; assert False
+    ## last
+    # whole_dataset[len(whole_dataset)-1]; assert False
+    ## problem?
+    # ds = whole_dataset[58]; assert False
+
+    for i in range(len(whole_dataset)):
+        whole_dataset[i]
+        pass
+
+    loader = DataLoader(whole_dataset, batch_size=40, num_workers=1, shuffle=False)
+    loader.__iter__().__next__()
+    for ix, X in enumerate(loader):
+        # [('historic', torch.Size([40, 60, 4])), ('future_1', torch.Size([40, 14, 3])), ('future_2', torch.Size([40, 76, 1]))]
+        print(ix, [(kk, xx.shape) for kk, xx in X.items()])

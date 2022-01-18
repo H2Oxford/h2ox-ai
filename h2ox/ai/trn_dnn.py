@@ -3,7 +3,6 @@ import logging, os
 logging.basicConfig(level=logging.INFO)
 import pandas as pd
 from datetime import timedelta, datetime
-from torchsummary import summary
 
 from tqdm import tqdm
 
@@ -15,7 +14,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
 
-from src.w2w.dataloader_dnn import w2w_dnn_loader
+from h2ox.ai.dataloader_dnn import w2w_dnn_loader
 from matplotlib.collections import LineCollection
 
 
@@ -337,6 +336,9 @@ def train(
 
 
 def main(PARAMS):
+    dataset = "3zscore"
+    dataset = "18x2mo_split"
+    dataset = "zscore"
 
     root = os.getcwd()
 
@@ -344,7 +346,7 @@ def main(PARAMS):
 
     trn_dataset = w2w_dnn_loader(
         csv_data_path=os.path.join(
-            root, "wave2web_data", f'{PARAMS["SITE"]}_18x2mo_split.csv'
+            root, "data", "interim", f"{PARAMS['SITE']}_{dataset}.csv"
         ),
         targets_forecast=91,  # days
         lag_windows=[5, 15, 30, 60, 100],  # days
@@ -353,10 +355,11 @@ def main(PARAMS):
         normalise=True,
         start_date=datetime(year=2014, month=1, day=1),
         end_date=datetime(year=2018, month=12, day=31),
+        target_var="volume_bcm",
     )
     val_dataset = w2w_dnn_loader(
         csv_data_path=os.path.join(
-            root, "wave2web_data", f'{PARAMS["SITE"]}_18x2mo_split.csv'
+            root, "data", "interim", f"{PARAMS['SITE']}_{dataset}.csv"
         ),
         targets_forecast=91,  # days
         lag_windows=[5, 15, 30, 60, 100],  # days
@@ -365,22 +368,24 @@ def main(PARAMS):
         normalise=True,
         start_date=datetime(year=2011, month=1, day=1),
         end_date=datetime(year=2013, month=12, day=31),
+        target_var="volume_bcm",
     )
 
     whole_dataset = w2w_dnn_loader(
         csv_data_path=os.path.join(
-            root, "wave2web_data", f'{PARAMS["SITE"]}_18x2mo_split.csv'
+            root, "data", "interim", f"{PARAMS['SITE']}_{dataset}.csv"
         ),
         targets_forecast=91,  # days
         lag_windows=[5, 15, 30, 60, 100],  # days
         segment=None,
         autoregressive=True,
         normalise=True,
+        target_var="volume_bcm",
     )
 
     test_dataset = w2w_dnn_loader(
         csv_data_path=os.path.join(
-            root, "wave2web_data", f'{PARAMS["SITE"]}_18x2mo_split.csv'
+            root, "data", "interim", f"{PARAMS['SITE']}_{dataset}.csv"
         ),
         targets_forecast=91,  # days
         lag_windows=[5, 15, 30, 60, 100],  # days
@@ -389,6 +394,7 @@ def main(PARAMS):
         normalise=True,
         start_date=datetime(year=2019, month=1, day=1),
         end_date=datetime(year=2020, month=12, day=31),
+        target_var="volume_bcm",
     )
 
     trn_loader = DataLoader(
@@ -447,7 +453,7 @@ if __name__ == "__main__":
         PARAMS = dict(
             SITE=kk,
             BATCH_SIZE=128,
-            DATALOADER_WORKERS=6,
+            DATALOADER_WORKERS=1,
             LR=0.0005,
             DEVICE="cuda",
             EPOCHS=25,
