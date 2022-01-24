@@ -140,6 +140,7 @@ class S2S2SModel(nn.Module):
 
             output, hidden, cell = self.decoder_forecast(x_f, hidden, cell)
 
+            # pass through the linear head (SAME AS FUTURE HEAD (?))
             outputs[:, t] = torch.squeeze(
                 self.head(self.dropout(torch.squeeze(output)))
             )
@@ -149,6 +150,8 @@ class S2S2SModel(nn.Module):
             x_ff = data["x_ff"][:, t, :].unsqueeze(1)
 
             output, hidden, cell = self.decoder_future(x_ff, hidden, cell)
+
+            # pass through the linear head (SAME AS FORECAST HEAD (?))
             outputs[:, t] = torch.squeeze(
                 self.head(self.dropout(torch.squeeze(output)))
             )
@@ -162,47 +165,69 @@ if __name__ == "__main__":
     # load dataloader
     # initialise model
     # run model forward
-
-    from typing import List
     from h2ox.ai.dataset import FcastDataset
-    from torch.utils.data import DataLoader
-    import xarray as xr
+    from h2ox.scripts.utils import load_zscore_data
+    from definitions import ROOT_DIR
     from pathlib import Path
-    from utils import get_data_dir
+    from torch.utils.data import DataLoader
 
-    # load dummy data [daily forecast, 1hr steps & 15 day horizon, 2 locations]
-    data_dir = get_data_dir()
-    ds = xr.open_dataset(data_dir / "ds_historical.nc")
-    forecast = xr.open_dataset(data_dir / "fcast.nc")
+    # parameters for the yaml file
+    ENCODE_DOY = True
+    SEQ_LEN = 60
+    FUTURE_HORIZON = 76
+    SITE = "kabini"
+    TARGET_VAR = "volume_bcm"
+    HISTORY_VARIABLES = ["tp", "t2m"]
+    FORECAST_VARIABLES = ["tp", "t2m"]
+    FUTURE_VARIABLES = []
+    BATCH_SIZE = 32
+    TRAIN_END_DATE = "2011-01-01"
+    TRAIN_START_DATE = "2010-01-01"
 
-    # target = ds[["price"]]
-    ds = ds.sel(time=slice("2001-01-01", "2002-01-01"))
-    forecast = forecast.sel(initialisation_date=slice("2001-01-01", "2002-01-01"))
+    # load data
+    data_dir = Path(ROOT_DIR / "data")
+    target, history, forecast = load_zscore_data(data_dir)
 
-    # create dataset
-    history_variables: List[str] = [
-        "price",
-        "temperature",
-        "demand",
-        "wind_speed",
-        "shortwave_radiation",
-    ]
-    forecast_variables: List[str] = ["temperature", "wind_speed", "shortwave_radiation"]
+    # get train data
+    train_target = target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_history = history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_forecast = forecast.sel(initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
 
-    dd = FcastDataset(ds, forecast, mode="train")
-    batch_size = 100
-    dl = DataLoader(dd, batch_size=batch_size, shuffle=False)
+    # # select site
+    y = train_target.sel(location=[SITE])
+    x_d = train_history.sel(location=[SITE])
+    x_f = train_forecast.sel(location=[SITE])
+
+    # load dataset
+    dd = FcastDataset(
+        target=y,  # target,
+        history=x_d,  # history,
+        forecast=x_f,  # forecast,
+        # future=x_ff,  # future,
+        encode_doy=ENCODE_DOY,
+        historical_seq_len=SEQ_LEN,
+        future_horizon=FUTURE_HORIZON,
+        target_var=TARGET_VAR,
+    )
+    dl = DataLoader(dd, batch_size=BATCH_SIZE, shuffle=False)
 
     data_example = dl.__iter__().__next__()
-    historical_input_size = data_example["x_d"].shape[-1]
-    forecast_input_size = data_example["x_f"].shape[-1]
-    horizon = data_example["x_f"].shape[1]
     seq_length = data_example["x_d"].shape[1]
 
+    forecast_horizon = data_example["x_f"].shape[1]
+    future_horizon = data_example["x_ff"].shape[1]
+    total_horizon = forecast_horizon + future_horizon
+    
+    historical_input_size = data_example["x_d"].shape[-1]
+    forecast_input_size = data_example["x_f"].shape[-1]
+    future_input_size = data_example["x_ff"].shape[-1]
+
     model = S2S2SModel(
-        horizon=horizon,
+        forecast_horizon=forecast_horizon,
+        future_horizon=future_horizon,
         historical_input_size=historical_input_size,
         forecast_input_size=forecast_input_size,
+        future_input_size=future_input_size,
         hidden_size=64,
         num_layers=1,
         dropout=0.4,
@@ -210,9 +235,9 @@ if __name__ == "__main__":
 
     yhat = model(data_example)
     assert yhat.shape == (
-        batch_size,
-        horizon,
-    ), f"Expected {(batch_size, horizon, 1)} Got: {yhat.shape}"
+        BATCH_SIZE,
+        total_horizon,
+    ), f"Expected {(BATCH_SIZE, total_horizon)} Got: {yhat.shape}"
 
     # train -- validation split (for testing hyperparameters)
     train_size = int(0.8 * len(dd))
