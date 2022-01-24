@@ -58,7 +58,9 @@ class FcastDataset(Dataset):
         # size of arrays
         self.seq_len = historical_seq_len
         self.future_horizon = future_horizon
-        self.forecast_horizon = pd.Timedelta(forecast[forecast_horizon_dim].max().values).days
+        self.forecast_horizon = pd.Timedelta(
+            forecast[forecast_horizon_dim].max().values
+        ).days
         self.target_horizon = self.future_horizon + self.forecast_horizon
 
         # TODO: do we want to add engineered features in the torch.Dataset?
@@ -77,9 +79,7 @@ class FcastDataset(Dataset):
         )
 
         self.future_variables = (
-            ["doy_sin", "doy_cos"]
-            if encode_doy
-            else self.future_variables
+            ["doy_sin", "doy_cos"] if encode_doy else self.future_variables
         )
 
         # turn the data into a dictionary for model input
@@ -97,7 +97,7 @@ class FcastDataset(Dataset):
         total_str += f"target: {self.target_var}\n"
         total_str += f"history_variables: {self.history_variables}\n"
         total_str += f"forecast_variables: {self.forecast_variables}\n"
-        total_str += "future_variables: [doy_sin, doy_cos]\n"           # NOTE: hardcoded
+        total_str += "future_variables: [doy_sin, doy_cos]\n"  # NOTE: hardcoded
         total_str += f"seq_len: {self.seq_len}D\n"
         total_str += f"future_horizon: {self.future_horizon}\n"
         total_str += f"forecast_horizon: {self.forecast_horizon}\n"
@@ -111,8 +111,12 @@ class FcastDataset(Dataset):
         total_str += f'y shape:   {data_eg["y"].shape}\n'
 
         # time and space dimensions
-        tmin = pd.Timestamp(self.forecast[self.forecast_initialisation_dim].min().values)
-        tmax = pd.Timestamp(self.forecast[self.forecast_initialisation_dim].max().values)
+        tmin = pd.Timestamp(
+            self.forecast[self.forecast_initialisation_dim].min().values
+        )
+        tmax = pd.Timestamp(
+            self.forecast[self.forecast_initialisation_dim].max().values
+        )
         total_str += f"PERIOD: {tmin}: {tmax}\n"
         total_str += f"LOCATIONS: {self.history[self.spatial_dim].values}\n"
 
@@ -210,7 +214,7 @@ class FcastDataset(Dataset):
                 if np.any(fcast.isnull()):
                     NAN_COUNTER += 1
                     continue
-                
+
                 if np.any(future.isnull()):
                     NAN_COUNTER += 1
                     continue
@@ -218,12 +222,15 @@ class FcastDataset(Dataset):
                 if np.any(history.isnull()):
                     NAN_COUNTER += 1
                     continue
-                
+
                 if history.shape[0] != self.seq_len:
-                    # not enough history for that sample 
+                    # not enough history for that sample
                     NAN_COUNTER += 1
                     continue
 
+                if target.shape[0] != self.target_horizon:
+                    NAN_COUNTER += 1
+                    continue
 
                 # SAVE ALL DATA to attribute
                 self.all_data[COUNTER] = {
@@ -268,7 +275,7 @@ class FcastDataset(Dataset):
         forecast_init_time: pd.Timestamp,
     ) -> pd.DataFrame:
         fcast = data_f.sel({self.forecast_initialisation_dim: forecast_init_time})
-        # Get the data UP TO horizon
+        # Get the data UP TO horizon
         fcast = fcast.isel({self.forecast_horizon_dim: slice(0, self.forecast_horizon)})
         # rename self.forecast_horizon_dim -> time
         forecast_times = (
@@ -278,7 +285,9 @@ class FcastDataset(Dataset):
         fcast["time"] = forecast_times
 
         fcast = (
-            fcast.drop_vars([self.forecast_initialisation_dim, "valid_time"], errors="ignore")
+            fcast.drop_vars(
+                [self.forecast_initialisation_dim, "valid_time"], errors="ignore"
+            )
             .drop(self.spatial_dim)
             .to_dataframe()
         )
@@ -301,9 +310,11 @@ class FcastDataset(Dataset):
         # TODO: how to pass in extra variables to future data?
         # TODO: do you want to create the future data here? that way there's never missing data
         # TODO: but the alternative is to be able to pass the future data into __init__()
-        
+
         # NOTE: drop the first because that is already included in the forecast
-        future_times = pd.date_range(target.index.max() - future_horizon_td, target.index.max())[1:]
+        future_times = pd.date_range(
+            target.index.max() - future_horizon_td, target.index.max()
+        )[1:]
         future = pd.DataFrame({"time": future_times}).set_index("time")
 
         return future
@@ -324,7 +335,7 @@ class FcastDataset(Dataset):
             .to_dataframe()
         )
         return target
-    
+
     def _encode_times(
         self,
         history: xr.Dataset,
@@ -332,9 +343,7 @@ class FcastDataset(Dataset):
         future: xr.Dataset,
     ) -> Tuple[pd.DataFrame, ...]:
         if self.encode_doy:
-            fcast["doy_sin"], fcast["doy_cos"] = create_doy(
-                list(fcast.index.dayofyear)
-            )
+            fcast["doy_sin"], fcast["doy_cos"] = create_doy(list(fcast.index.dayofyear))
             history["doy_sin"], history["doy_cos"] = create_doy(
                 list(history.index.dayofyear)
             )
@@ -390,6 +399,17 @@ class FcastDataset(Dataset):
         return data
 
 
+def print_instance(dd: FcastDataset, instance: int):
+    print(
+        f"{instance}: ",
+        [
+            (k, dd[instance][k].shape)
+            for k in dd[instance].keys()
+            if not isinstance(dd[instance][k], dict)
+        ],
+    )
+
+
 if __name__ == "__main__":
     from h2ox.scripts.utils import load_zscore_data
     from h2ox.ai.utils import encode_doys, create_doy
@@ -403,6 +423,15 @@ if __name__ == "__main__":
     HISTORY_VARIABLES = ["tp", "t2m"]
     FORECAST_VARIABLES = ["tp", "t2m"]
     FUTURE_VARIABLES = []
+    BATCH_SIZE = 32
+    TRAIN_END_DATE = "2011-01-01"
+    TRAIN_START_DATE = "2010-01-01"
+    HIDDEN_SIZE = 64
+    NUM_LAYERS = 1
+    DROPOUT = 0.4
+    NUM_WORKERS = 1
+    N_EPOCHS = 10
+    RANDOM_VAL_SPLIT = True
 
     # load data
     data_dir = Path(ROOT_DIR / "data")
@@ -433,9 +462,9 @@ if __name__ == "__main__":
 
     # load dataset
     dd = FcastDataset(
-        target=y,  # target,
-        history=x_d,  # history,
-        forecast=x_f,  # forecast,
+        target=y,  # target,
+        history=x_d,  # history,
+        forecast=x_f,  # forecast,
         # future=x_ff,  # future,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,

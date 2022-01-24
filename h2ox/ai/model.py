@@ -6,6 +6,7 @@ from typing import Dict, Optional
 from torch import nn
 import torch
 import numpy as np
+from torch.utils.data import DataLoader
 
 
 class Encoder(nn.Module):
@@ -118,6 +119,7 @@ class S2S2SModel(nn.Module):
         self.device = device
         self.forecast_horizon = forecast_horizon
         self.future_horizon = future_horizon
+        self.target_horizon = forecast_horizon + future_horizon
 
         self.dropout = nn.Dropout(p=dropout)
         fc_layer = nn.Linear(hidden_size, 1)
@@ -159,6 +161,32 @@ class S2S2SModel(nn.Module):
         return outputs
 
 
+def initialise_model(
+    dl: DataLoader, hidden_size: int = 64, num_layers: int = 1, dropout: float = 0.4
+) -> S2S2SModel:
+    # initialise model shapes
+    data_example = dl.__iter__().__next__()
+    forecast_horizon = data_example["x_f"].shape[1]
+    future_horizon = data_example["x_ff"].shape[1]
+
+    historical_input_size = data_example["x_d"].shape[-1]
+    forecast_input_size = data_example["x_f"].shape[-1]
+    future_input_size = data_example["x_ff"].shape[-1]
+
+    model = S2S2SModel(
+        forecast_horizon=forecast_horizon,
+        future_horizon=future_horizon,
+        historical_input_size=historical_input_size,
+        forecast_input_size=forecast_input_size,
+        future_input_size=future_input_size,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        dropout=dropout,
+    )
+
+    return model
+
+
 if __name__ == "__main__":
     # load data
     # load dataset
@@ -183,6 +211,12 @@ if __name__ == "__main__":
     BATCH_SIZE = 32
     TRAIN_END_DATE = "2011-01-01"
     TRAIN_START_DATE = "2010-01-01"
+    HIDDEN_SIZE = 64
+    NUM_LAYERS = 1
+    DROPOUT = 0.4
+    NUM_WORKERS = 1
+    N_EPOCHS = 10
+    RANDOM_VAL_SPLIT = True
 
     # load data
     data_dir = Path(ROOT_DIR / "data")
@@ -191,7 +225,9 @@ if __name__ == "__main__":
     # get train data
     train_target = target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
     train_history = history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
-    train_forecast = forecast.sel(initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_forecast = forecast.sel(
+        initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE)
+    )
 
     # # select site
     y = train_target.sel(location=[SITE])
@@ -200,10 +236,9 @@ if __name__ == "__main__":
 
     # load dataset
     dd = FcastDataset(
-        target=y,  # target,
-        history=x_d,  # history,
-        forecast=x_f,  # forecast,
-        # future=x_ff,  # future,
+        target=y,  # target,
+        history=x_d,  # history,
+        forecast=x_f,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
@@ -211,13 +246,14 @@ if __name__ == "__main__":
     )
     dl = DataLoader(dd, batch_size=BATCH_SIZE, shuffle=False)
 
+    # initialise model shapes
     data_example = dl.__iter__().__next__()
     seq_length = data_example["x_d"].shape[1]
 
     forecast_horizon = data_example["x_f"].shape[1]
     future_horizon = data_example["x_ff"].shape[1]
     total_horizon = forecast_horizon + future_horizon
-    
+
     historical_input_size = data_example["x_d"].shape[-1]
     forecast_input_size = data_example["x_f"].shape[-1]
     future_input_size = data_example["x_ff"].shape[-1]
@@ -228,9 +264,9 @@ if __name__ == "__main__":
         historical_input_size=historical_input_size,
         forecast_input_size=forecast_input_size,
         future_input_size=future_input_size,
-        hidden_size=64,
-        num_layers=1,
-        dropout=0.4,
+        hidden_size=HIDDEN_SIZE,
+        num_layers=NUM_LAYERS,
+        dropout=DROPOUT,
     )
 
     yhat = model(data_example)
