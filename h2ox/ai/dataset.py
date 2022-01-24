@@ -92,6 +92,30 @@ class FcastDataset(Dataset):
         total_str = f"FcastDataset\n"
         total_str += f"------------\n"
         total_str += f"\n"
+        total_str += f"Size: {self.__len__()}\n"
+        total_str += f"Dataset: {self.mode}\n"
+        total_str += f"target: {self.target_var}\n"
+        total_str += f"history_variables: {self.history_variables}\n"
+        total_str += f"forecast_variables: {self.forecast_variables}\n"
+        total_str += "future_variables: [doy_sin, doy_cos]\n"           # NOTE: hardcoded
+        total_str += f"seq_len: {self.seq_len}D\n"
+        total_str += f"future_horizon: {self.future_horizon}\n"
+        total_str += f"forecast_horizon: {self.forecast_horizon}\n"
+        total_str += f"target_horizon: {self.target_horizon}\n"
+
+        # plot data shapes
+        data_eg = self[1]
+        total_str += f'x_d shape: {data_eg["x_d"].shape}\n'
+        total_str += f'x_f shape: {data_eg["x_f"].shape}\n'
+        total_str += f'x_ff shape: {data_eg["x_ff"].shape}\n'
+        total_str += f'y shape:   {data_eg["y"].shape}\n'
+
+        # time and space dimensions
+        tmin = pd.Timestamp(self.forecast[self.forecast_initialisation_dim].min().values)
+        tmax = pd.Timestamp(self.forecast[self.forecast_initialisation_dim].max().values)
+        total_str += f"PERIOD: {tmin}: {tmax}\n"
+        total_str += f"LOCATIONS: {self.history[self.spatial_dim].values}\n"
+
         return total_str
 
     def engineer_arrays(self):
@@ -103,7 +127,7 @@ class FcastDataset(Dataset):
         """
         # Timedelta objects describing horizons / seq_length
         seq_length_history_td = pd.Timedelta(f"{self.seq_len}D")
-        forecast_horizon_td = pd.Timedelta(f"{self.forecast_horizon}D")
+        # forecast_horizon_td = pd.Timedelta(f"{self.forecast_horizon}D")
         future_horizon_td = pd.Timedelta(f"{self.future_horizon}D")
         target_horizon_td = pd.Timedelta(f"{self.target_horizon}D")
 
@@ -386,26 +410,26 @@ if __name__ == "__main__":
 
     # create future data (x_ff)
     # date and location columns
-    min_date = target["time"].min().values
-    max_date = target["time"].max().values + (FUTURE_HORIZON * pd.Timedelta("1D"))
-    future_date_index = pd.date_range(min_date, max_date, freq="D")
-    future = pd.concat(
-        [
-            pd.DataFrame({"time": future_date_index, "location": loc})
-            for loc in target.location.values
-        ]
-    ).set_index("time")
+    # min_date = target["time"].min().values
+    # max_date = target["time"].max().values + (FUTURE_HORIZON * pd.Timedelta("1D"))
+    # future_date_index = pd.date_range(min_date, max_date, freq="D")
+    # future = pd.concat(
+    #     [
+    #         pd.DataFrame({"time": future_date_index, "location": loc})
+    #         for loc in target.location.values
+    #     ]
+    # ).set_index("time")
 
     # feature engineering
-    doys_sin, doys_cos = encode_doys(future.index.dayofyear)
-    future["doy_sin"] = doys_sin[0]
-    future["doy_cos"] = doys_cos[0]
+    # doys_sin, doys_cos = encode_doys(future.index.dayofyear)
+    # future["doy_sin"] = doys_sin[0]
+    # future["doy_cos"] = doys_cos[0]
 
     # # select site
     y = target.sel(location=[SITE])
     x_d = history.sel(location=[SITE])
     x_f = forecast.sel(location=[SITE])
-    x_ff = future.loc[np.isin(future["location"], SITE)]
+    # x_ff = future.loc[np.isin(future["location"], SITE)]
 
     # load dataset
     dd = FcastDataset(

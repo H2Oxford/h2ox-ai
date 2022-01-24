@@ -120,10 +120,7 @@ def load_samantha_dataframe_to_dataset(df: pd.DataFrame) -> xr.Dataset:
 
 def load_PFAF_ID_metadata(data_dir: Path) -> pd.DataFrame:
     metadata_path = data_dir / "raw" / "W4P_reservoir_watersheds.csv"
-    df = pd.read_csv(metadata_path).iloc[
-        :,
-        1:,
-    ]
+    df = pd.read_csv(metadata_path).iloc[:, 1:, ]
     return df
 
 
@@ -146,7 +143,34 @@ def load_samantha_data(data_dir: Path) -> Tuple[xr.Dataset, pd.DataFrame]:
     return ds, meta
 
 
+def load_reservoir_metas(data_dir: Path) -> pd.DataFrame:
+    meta_path = data_dir / "raw" / "h2ox_reservoirs.csv"
+    df = pd.read_csv(meta_path)
+    return df
+
+
+def get_all_big_q_data_as_xarray(data_dir: Path) -> xr.Dataset: 
+    # df = pd.read_csv(data_dir / "raw" / "bigquery_24012022_original.csv", parse_dates=["DATETIME"]).rename({"DATETIME": "date", "RESERVOIR_NAME": "location"}, axis=1)
+    df = pd.read_csv(data_dir / "raw" / "bigquery_24012022_historic.csv", parse_dates=["date"]).rename({"reservoir": "location"}, axis=1)
+    
+    # convert dataframe to xr.Dataset
+    df = df.sort_values(["location", "date"]).set_index(["date", "location"])
+    ds = df.loc[~df.index.duplicated(keep='last')].to_xarray()
+    return ds
+
+
+
 if __name__ == "__main__":
     data_dir = Path(ROOT_DIR / "data")
     target, history, forecast = load_zscore_data(data_dir)
     sam_data, meta = load_samantha_data(data_dir)
+    bigq_meta = load_reservoir_metas(data_dir)
+    bigq_target = get_all_big_q_data_as_xarray(data_dir)
+
+
+    
+    # os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/Users/tommylees/Downloads/oxeo-main-c8ac2f9d9d36.json'
+    # from google.cloud import bigquery
+    # table_name = "oxeo-main.wave2web.reservoir-data"
+    # client = bigquery.Client()
+    # query = "SELECT * FROM `oxeo-main.wave2web.reservoir-data`"
