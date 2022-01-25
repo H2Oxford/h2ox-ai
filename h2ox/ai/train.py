@@ -20,9 +20,9 @@ def weighted_mse_loss(
     return torch.sum(weight * (input - target) ** 2)
 
 
-def initialise_training(model, device: str) -> Tuple[Any, Any, Any]:
+def initialise_training(model, device: str, loss_rate: float = 5e-2) -> Tuple[Any, Any, Any]:
     # use ADAM optimizer
-    optimizer = optim.Adam([pam for pam in model.parameters()], lr=5e-2)  # 0.05
+    optimizer = optim.Adam([pam for pam in model.parameters()], lr=loss_rate)  # 0.05
 
     # reduce loss rate every \step_size epochs by \gamma
     # from initial \lr
@@ -346,7 +346,7 @@ if __name__ == "__main__":
     # # train
     # TODO: how to config the loss_fn // optimizer etc. ?
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    optimizer, scheduler, loss_fn = initialise_training(model, device=device)
+    optimizer, scheduler, loss_fn = initialise_training(model, device=device, loss_rate=1e-3)
 
     losses, _ = train(model, train_dl, optimizer=optimizer, scheduler=scheduler, loss_fn=loss_fn, epochs=N_EPOCHS, val_dl=val_dl)
     # plt.plot(losses)
