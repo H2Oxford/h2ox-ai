@@ -311,15 +311,15 @@ if __name__ == "__main__":
     )
 
     # normalize data
-    norm_target, (mean_target, std_target) = normalize_data(site_target)
-    norm_history, (mean_history, std_history) = normalize_data(site_history)
-    norm_train_forecast, (mean_forecast, std_forecast) = normalize_data(train_forecast, time_dim="initialisation_time")
+    # norm_target, (mean_target, std_target) = normalize_data(site_target)
+    # norm_history, (mean_history, std_history) = normalize_data(site_history)
+    # norm_train_forecast, (mean_forecast, std_forecast) = normalize_data(train_forecast, time_dim="initialisation_time")
 
     # load dataset
     dd = FcastDataset(
-        target=norm_target,  # target,
-        history=norm_history,  # history,
-        forecast=norm_train_forecast,  # forecast,
+        target=site_target,  # target,
+        history=site_history,  # history,
+        forecast=train_forecast,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
@@ -360,13 +360,13 @@ if __name__ == "__main__":
         test_forecast = site_forecast.sel(
             initialisation_time=slice(TEST_START_DATE, TEST_END_DATE)
         )
-        norm_test_forecast = (test_forecast - mean_forecast) / std_forecast
+        # norm_test_forecast = (test_forecast - mean_forecast) / std_forecast
 
         # load dataset
         test_dd = FcastDataset(
-            target=norm_target,  # target,
-            history=norm_history,  # history,
-            forecast=norm_test_forecast,  # forecast,
+            target=site_target,  # target,
+            history=site_history,  # history,
+            forecast=test_forecast,  # forecast,
             encode_doy=ENCODE_DOY,
             historical_seq_len=SEQ_LEN,
             future_horizon=FUTURE_HORIZON,
@@ -386,8 +386,9 @@ if __name__ == "__main__":
         test_dl = val_dl
 
     preds = test(model, test_dl)
+    
     # unnormalize preds
-    preds = unnormalize_preds(preds, mean_target, std_target, target=TARGET_VAR, sample=SITE)
+    # preds = unnormalize_preds(preds, mean_target, std_target, target=TARGET_VAR, sample=SITE)
 
     errors = calculate_errors(preds, TARGET_VAR, model_str="s2s2s")
     print(errors["rmse"])
