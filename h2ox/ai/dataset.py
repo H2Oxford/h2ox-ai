@@ -62,6 +62,7 @@ class FcastDataset(Dataset):
             forecast[forecast_horizon_dim].max().values
         ).days
         self.target_horizon = self.future_horizon + self.forecast_horizon
+        self.times = np.ndarray([])
 
         # TODO: do we want to add engineered features in the torch.Dataset?
         # TODO: how shall we specify what data is used in the future dataframe?
@@ -118,9 +119,10 @@ class FcastDataset(Dataset):
             self.forecast[self.forecast_initialisation_dim].max().values
         )
         total_str += f"PERIOD: {tmin}: {tmax}\n"
-        total_str += f"LOCATIONS: {self.history[self.spatial_dim].values}\n"
+        total_str += f"LOCATIONS: {self.forecast[self.spatial_dim].values}\n"
 
         return total_str
+
 
     def engineer_arrays(self):
         """Create an `all_data` attribute which stores all the data
@@ -149,7 +151,7 @@ class FcastDataset(Dataset):
 
         # TODO: what happens if the timeseries is not complete? i.e. missing dates
         # TODO: what if all the spatial locations in a dataset are not there?
-        for sample in self.history[self.spatial_dim].values:
+        for sample in self.forecast[self.spatial_dim].values:
 
             # get the data for the sample
             data_h = self.history.sel({self.spatial_dim: sample})
@@ -228,10 +230,11 @@ class FcastDataset(Dataset):
                     NAN_COUNTER += 1
                     continue
 
-                if target.shape[0] != self.target_horizon:
+                if target.shape[0] != self.target_horizon + 1:
                     NAN_COUNTER += 1
                     continue
-
+                
+                # assert False
                 # SAVE ALL DATA to attribute
                 self.all_data[COUNTER] = {
                     "x_f": fcast,
@@ -245,6 +248,8 @@ class FcastDataset(Dataset):
 
         # save for calculation of length
         self.n_samples = COUNTER
+        # save metadata for each sample
+        self.times = forecast_init_times
 
         if self.cache:
             # cache to disk
@@ -330,7 +335,7 @@ class FcastDataset(Dataset):
             time=slice(forecast_init_time, forecast_init_time + horizon_td)
         )
         target = (
-            target.isel(time=slice(-self.target_horizon, None))
+            target  # target.isel(time=slice(-self.target_horizon, None))
             .drop(self.spatial_dim)
             .to_dataframe()
         )
@@ -424,8 +429,8 @@ if __name__ == "__main__":
     FORECAST_VARIABLES = ["tp", "t2m"]
     FUTURE_VARIABLES = []
     BATCH_SIZE = 32
-    TRAIN_END_DATE = "2011-01-01"
-    TRAIN_START_DATE = "2010-01-01"
+    TRAIN_END_DATE = "2012-01-01"
+    TRAIN_START_DATE = "2011-01-01"
     HIDDEN_SIZE = 64
     NUM_LAYERS = 1
     DROPOUT = 0.4
@@ -455,26 +460,51 @@ if __name__ == "__main__":
     # future["doy_cos"] = doys_cos[0]
 
     # # select site
-    y = target.sel(location=[SITE])
-    x_d = history.sel(location=[SITE])
-    x_f = forecast.sel(location=[SITE])
-    # x_ff = future.loc[np.isin(future["location"], SITE)]
+    site_target = target.sel(location=[SITE])
+    site_history = history.sel(location=[SITE])
+    site_forecast = forecast.sel(location=[SITE])
+
+    # get train data
+    train_target = site_target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_forecast = site_forecast.sel(
+        initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE)
+    )
 
     # load dataset
     dd = FcastDataset(
-        target=y,  # target,
-        history=x_d,  # history,
-        forecast=x_f,  # forecast,
-        # future=x_ff,  # future,
+        target=train_target,  # target,
+        history=train_history,  # history,
+        forecast=train_forecast,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
         target_var=TARGET_VAR,
+        mode="train",
+        history_variables=HISTORY_VARIABLES,
+        forecast_variables=FORECAST_VARIABLES,
     )
 
     print([(k, dd[0][k].shape) for k in dd[0].keys() if not isinstance(dd[0][k], dict)])
 
     # load dataloader
     # get individual/batched samples
+
+    final_t = dd[0]["x_d"][-1, :]
+    first_t = dd[0]["y"][0, :]
+    location=dd.get_meta(0)[0]; time=dd.get_meta(0)[1]
+    # check numbers match
+    print("History")
+    print(final_t[:2])
+    print(history.sel(location=location, time=time).to_array().values)
+    print()
+    print("Target")
+    print(first_t)
+    print(target.sel(location=location, time=time).to_array().values)
+    
+    data_y = site_target
+    target_horizon_td = pd.Timedelta(f"{dd.target_horizon}D")
+    dd._get_target_data(data_y, forecast_init_time=time, horizon_td=target_horizon_td)
+    forecast.sel(location=location, initialisation_time=time)
 
     assert False
