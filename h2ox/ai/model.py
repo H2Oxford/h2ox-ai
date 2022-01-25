@@ -121,6 +121,7 @@ class S2S2SModel(nn.Module):
         self.device = device
         self.forecast_horizon = forecast_horizon
         self.future_horizon = future_horizon
+        # TODO: calculate this from the data too!
         self.target_horizon = forecast_horizon + future_horizon
         # self.target_horizon = forecast_horizon + future_horizon + 1 if self.include_current_timestep_in_horizon else forecast_horizon + future_horizon
 
@@ -147,8 +148,8 @@ class S2S2SModel(nn.Module):
         #         self.head(self.dropout(torch.squeeze(encoder_outputs[:, -1, :])))
         #     )
 
-        # RUN FORECAST
-        for t in range(self.forecast_horizon):
+        # RUN FORECAST [0 -- 14]
+        for t in range(0, self.forecast_horizon):
             x_f = data["x_f"][:, t, :].unsqueeze(1)
 
             output, hidden, cell = self.decoder_forecast(x_f, hidden, cell)
@@ -160,9 +161,9 @@ class S2S2SModel(nn.Module):
                 self.head(self.dropout(torch.squeeze(output)))
             )
 
-        # RUN FUTURE
-        for t in range(self.future_horizon):
-            x_ff = data["x_ff"][:, t, :].unsqueeze(1)
+        # RUN FUTURE [14 -- 90]
+        for t in range(self.forecast_horizon, self.target_horizon):
+            x_ff = data["x_ff"][:, t - self.forecast_horizon, :].unsqueeze(1)
 
             output, hidden, cell = self.decoder_future(x_ff, hidden, cell)
 

@@ -29,9 +29,9 @@ def initialise_training(model, device: str) -> Tuple[Any, Any, Any]:
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
 
     # use MSE Loss function
-    # loss_fn = nn.MSELoss().to(device)
+    loss_fn = nn.MSELoss().to(device)
     # loss_fn = nn.SmoothL1Loss().to(device)
-    loss_fn = weighted_mse_loss
+    # loss_fn = weighted_mse_loss
 
     return optimizer, scheduler, loss_fn
 
