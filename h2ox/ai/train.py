@@ -26,8 +26,7 @@ def initialise_training(model, device: str) -> Tuple[Any, Any, Any]:
 
     # reduce loss rate every \step_size epochs by \gamma
     # from initial \lr
-    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
-    scheduler = None
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
 
     # use MSE Loss function
     loss_fn = nn.MSELoss().to(device)
