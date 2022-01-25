@@ -90,6 +90,34 @@ def calculate_errors(preds: xr.Dataset, var: str, time_dim: str = "initialisatio
     return errors
 
 
+def normalize_data(
+    ds: xr.Dataset, static: bool = False, time_dim: str = "time"
+) -> Tuple[xr.Dataset, Tuple[xr.Dataset, xr.Dataset]]:
+    """
+    Standardizes the data to have mean 0 and standard deviation 1.
+    """
+    # (Y - mean) / std
+    if not static:
+        mean_ = ds.mean(dim=time_dim)
+        std_ = ds.std(dim=time_dim)
+    else:
+        mean_ = ds.mean()
+        std_ = ds.std()
+
+    norm_ds = (ds - mean_) / std_
+
+    return norm_ds, (mean_, std_)
+
+
+# unnormalize
+def unnormalize_preds(preds: xr.Dataset, mean_: xr.Dataset, std_: xr.Dataset, target: str, sample: str):
+    # (Y * std) + mean
+    preds["obs"] = (preds["obs"].sel(sample=sample) * std_[target].sel(sample=sample).values) + mean_[target].sel(sample=sample).values
+    preds["sim"] = (preds["sim"].sel(sample=sample) * std_[target].sel(sample=sample).values) + mean_[target].sel(sample=sample).values
+
+    return preds
+
+
 # def create_model_save_str(extra_str: str = "") -> str:
 #     save_str = ""
 #     date_str = datetime.now().strftime("%Y%m%d_%H%M")
