@@ -89,6 +89,8 @@ def interim_zscore_dataframes_to_xarray(ds: xr.Dataset) -> Tuple[xr.Dataset, ...
 
 def load_zscore_data(data_dir: Path) -> Tuple[xr.Dataset, ...]:
     df = read_interim_zscore_data(data_dir)
+    train_test_set = original_experiment_splits(df)
+
     ds = df.to_xarray()
     target, history, forecast = interim_zscore_dataframes_to_xarray(ds)
 
@@ -162,6 +164,30 @@ def get_all_big_q_data_as_xarray(data_dir: Path) -> xr.Dataset:
     df = df.sort_values(["location", "date"]).set_index(["date", "location"])
     ds = df.loc[~df.index.duplicated(keep="last")].to_xarray()
     return ds
+
+
+def original_experiment_splits(df: pd.DataFrame) -> pd.DataFrame:
+    train = df.reset_index().query("set == 'trn'").date.unique()
+    val = df.reset_index().query("set == 'val'").date.unique()
+    test = df.reset_index().query("set == 'test'").date.unique()
+
+    return pd.DataFrame({
+        "set": np.concatenate([["train" for _ in train], ["val" for _ in val], ["test" for _ in test]]),
+        "date": np.concatenate([train, val, test]),
+    })
+
+
+# def get_train_test_val_times(forecast: xr.Dataset, train_test_set: pd.DataFrame) -> pd.DataFrame:
+#     time = forecast["initialisation_time"]
+#     time_as_str = np.datetime_as_string(time.values, unit="M")
+#     train_times = time.values[np.isin(time_as_str, train_test_set.query("set == 'train'")["yrmnth"])]
+#     val_times = time.values[np.isin(time_as_str, train_test_set.query("set == 'val'")["yrmnth"])]
+#     test_times = time.values[np.isin(time_as_str, train_test_set.query("set == 'test'")["yrmnth"])]
+#     return pd.DataFrame({
+#         "set": np.concatenate([["train" for _ in train_times], ["val" for _ in val_times], ["test" for _ in test_times]]),
+#         "yrmnth": np.concatenate([train_times, val_times, test_times]),
+#     })
+
 
 
 if __name__ == "__main__":
