@@ -387,7 +387,7 @@ if __name__ == "__main__":
 
     preds = test(model, test_dl)
     # unnormalize preds
-    preds = unnormalize_preds(preds, mean_target, std_target)
+    preds = unnormalize_preds(preds, mean_target, std_target, target=TARGET_VAR, sample=SITE)
 
     errors = calculate_errors(preds, TARGET_VAR, model_str="s2s2s")
     print(errors["rmse"])
