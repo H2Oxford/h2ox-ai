@@ -22,11 +22,12 @@ def weighted_mse_loss(
 
 def initialise_training(model, device: str) -> Tuple[Any, Any, Any]:
     # use ADAM optimizer
-    optimizer = optim.Adam([pam for pam in model.parameters()], lr=5e-2)
+    optimizer = optim.Adam([pam for pam in model.parameters()], lr=5e-2)  # 0.05
 
     # reduce loss rate every \step_size epochs by \gamma
     # from initial \lr
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
+    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
+    scheduler = None
 
     # use MSE Loss function
     loss_fn = nn.MSELoss().to(device)
@@ -40,8 +41,8 @@ def train(
     model: nn.Module,
     train_dl: DataLoader,
     optimizer: Any,
-    scheduler: Any,
     loss_fn: nn.Module,
+    scheduler: Optional[Any] = None,
     epochs: int = 5,
     val_dl: Optional[DataLoader] = None,
     validate_every_n: int = 3,
@@ -109,7 +110,8 @@ def train(
                 f"Loss: {epoch_loss:.2f}  Lr: {learning_rate:.4f}  nans:  {count_nans}"
             )
 
-        scheduler.step()
+        if scheduler is not None:
+            scheduler.step()
         all_losses.append(epoch_loss)
         if epoch % validate_every_n == 0:
             # print(f"Current Losses: {all_losses}")
@@ -258,7 +260,7 @@ if __name__ == "__main__":
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
     from h2ox.scripts.utils import load_zscore_data
-    from h2ox.ai.utils import calculate_errors
+    from h2ox.ai.utils import calculate_errors, normalize_data, unnormalize_preds
     from definitions import ROOT_DIR
     from pathlib import Path
     import matplotlib.pyplot as plt
@@ -302,17 +304,22 @@ if __name__ == "__main__":
     site_forecast = forecast.sel(location=[SITE])
 
     # get train data
-    train_target = site_target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
-    train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    # train_target = site_target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    # train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
     train_forecast = site_forecast.sel(
         initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE)
     )
 
+    # normalize data
+    norm_target, (mean_target, std_target) = normalize_data(site_target)
+    norm_history, (mean_history, std_history) = normalize_data(site_history)
+    norm_train_forecast, (mean_forecast, std_forecast) = normalize_data(train_forecast, time_dim="initialisation_time")
+
     # load dataset
     dd = FcastDataset(
-        target=train_target,  # target,
-        history=train_history,  # history,
-        forecast=train_forecast,  # forecast,
+        target=norm_target,  # target,
+        history=norm_history,  # history,
+        forecast=norm_train_forecast,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
@@ -353,12 +360,13 @@ if __name__ == "__main__":
         test_forecast = site_forecast.sel(
             initialisation_time=slice(TEST_START_DATE, TEST_END_DATE)
         )
+        norm_test_forecast = (test_forecast - mean_forecast) / std_forecast
 
         # load dataset
         test_dd = FcastDataset(
-            target=site_target,  # target,
-            history=site_history,  # history,
-            forecast=test_forecast,  # forecast,
+            target=norm_target,  # target,
+            history=norm_history,  # history,
+            forecast=norm_test_forecast,  # forecast,
             encode_doy=ENCODE_DOY,
             historical_seq_len=SEQ_LEN,
             future_horizon=FUTURE_HORIZON,
@@ -378,7 +386,12 @@ if __name__ == "__main__":
         test_dl = val_dl
 
     preds = test(model, test_dl)
+    # unnormalize preds
+    preds = unnormalize_preds(preds, mean_target, std_target)
+
     errors = calculate_errors(preds, TARGET_VAR, model_str="s2s2s")
+    print(errors["rmse"])
+    print(errors["pearson-r"])
 
     assert False
 
@@ -393,4 +406,5 @@ if __name__ == "__main__":
     #     ax.set_title(time)
 
     # # make the forecast horizon plot 
-    # errors.squeeze()["rmse"]
+    f, ax = plt.subplots(figsize=(12, 6))
+    errors.squeeze()["rmse"].plot(ax=ax)
