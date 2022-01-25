@@ -161,7 +161,7 @@ class FcastDataset(Dataset):
             # create data samples for each initialisation_date
             # history = self.seq_len days before the forecast
             # target = forecast_horizon + future_horizon
-            pbar = tqdm(forecast_init_times, desc=f"Building data for {sample}")
+            pbar = tqdm(forecast_init_times, desc=f"Building data for {sample} [{self.mode}]")
             for forecast_init_time in pbar:
                 # init pbar
                 str_time = np.datetime_as_string(forecast_init_time, unit="h")
