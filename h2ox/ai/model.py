@@ -97,8 +97,10 @@ class S2S2SModel(nn.Module):
         num_layers: int = 1,
         dropout: float = 0.4,
         device: str = "cpu",
+        # include_current_timestep_in_horizon: bool = True,
     ):
         super().__init__()
+        # self.include_current_timestep_in_horizon = include_current_timestep_in_horizon
         # NOTE: forecast_input_size and historical_input_size
         # currently have static_size included/added on
         self.encoder = Encoder(
@@ -120,6 +122,7 @@ class S2S2SModel(nn.Module):
         self.forecast_horizon = forecast_horizon
         self.future_horizon = future_horizon
         self.target_horizon = forecast_horizon + future_horizon
+        # self.target_horizon = forecast_horizon + future_horizon + 1 if self.include_current_timestep_in_horizon else forecast_horizon + future_horizon
 
         self.dropout = nn.Dropout(p=dropout)
         fc_layer = nn.Linear(hidden_size, 1)
@@ -134,14 +137,15 @@ class S2S2SModel(nn.Module):
         # forecast - passing hidden and cell from previous timestep forwards
         #  the zero-time forecast just using the output of the encoder.
         # horizon size = forecast_horizon + future_horizon
-        horizon = self.forecast_horizon + self.future_horizon
-        outputs = torch.zeros(batch_size, horizon + 1 if horizon > 0 else 1).to(self.device)
+        horizon = self.target_horizon
+        outputs = torch.zeros(batch_size, horizon if horizon > 0 else 1).to(self.device)
 
         # RUN PREDICTION OF NOW (initialisation_time)
         # pass through the linear head (SAME AS FUTURE HEAD (?))
-        outputs[:, 0] = torch.squeeze(
-            self.head(self.dropout(torch.squeeze(encoder_outputs[:, -1, :])))
-        )
+        # if self.include_current_timestep_in_horizon:
+        #     outputs[:, 0] = torch.squeeze(
+        #         self.head(self.dropout(torch.squeeze(encoder_outputs[:, -1, :])))
+        #     )
 
         # RUN FORECAST
         for t in range(self.forecast_horizon):
@@ -150,7 +154,9 @@ class S2S2SModel(nn.Module):
             output, hidden, cell = self.decoder_forecast(x_f, hidden, cell)
 
             # pass through the linear head (SAME AS FUTURE HEAD (?))
-            outputs[:, t] = torch.squeeze(
+            # t_adj = t + 1 if self.include_current_timestep_in_horizon else t
+            t_adj = t
+            outputs[:, t_adj] = torch.squeeze(
                 self.head(self.dropout(torch.squeeze(output)))
             )
 
@@ -161,7 +167,9 @@ class S2S2SModel(nn.Module):
             output, hidden, cell = self.decoder_future(x_ff, hidden, cell)
 
             # pass through the linear head (SAME AS FORECAST HEAD (?))
-            outputs[:, t] = torch.squeeze(
+            # t_adj = t + 1 if self.include_current_timestep_in_horizon else t
+            t_adj = t
+            outputs[:, t_adj] = torch.squeeze(
                 self.head(self.dropout(torch.squeeze(output)))
             )
 
