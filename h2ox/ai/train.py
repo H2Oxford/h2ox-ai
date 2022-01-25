@@ -1,4 +1,5 @@
 from typing import Tuple, Any, DefaultDict, List, Dict, Optional
+import socket
 import numpy as np
 import xarray as xr
 from collections import defaultdict
@@ -261,10 +262,17 @@ if __name__ == "__main__":
     NUM_LAYERS = 1
     DROPOUT = 0.4
     NUM_WORKERS = 1
-    N_EPOCHS = 10
+    N_EPOCHS = 30
     RANDOM_VAL_SPLIT = True
     EVAL_TEST = True
-
+    
+    if socket.gethostname() == 'Tommy-Lees-MacBook-Air.local':
+        # if on tommy laptop then only running tests
+        TRAIN_END_DATE = "2011-01-01"
+        TRAIN_START_DATE = "2010-01-01"
+        EVAL_TEST = False
+        N_EPOCHS = 10
+  
     # load data
     data_dir = Path(ROOT_DIR / "data")
     target, history, forecast = load_zscore_data(data_dir)
