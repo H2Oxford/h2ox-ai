@@ -261,7 +261,7 @@ if __name__ == "__main__":
     HIDDEN_SIZE = 64
     NUM_LAYERS = 1
     DROPOUT = 0.4
-    NUM_WORKERS = 1
+    NUM_WORKERS = 4
     N_EPOCHS = 30
     RANDOM_VAL_SPLIT = True
     EVAL_TEST = True
@@ -272,6 +272,7 @@ if __name__ == "__main__":
         TRAIN_START_DATE = "2010-01-01"
         EVAL_TEST = False
         N_EPOCHS = 10
+        NUM_WORKERS = 1
   
     # load data
     data_dir = Path(ROOT_DIR / "data")
