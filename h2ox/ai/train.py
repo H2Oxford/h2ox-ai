@@ -237,6 +237,22 @@ def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]]) -> xr.Datase
     return ds
 
 
+def train_validation_split(train_dataset: FcastDataset, random_val_split: bool, validation_proportion: float=0.8) -> Tuple[FcastDataset, FcastDataset]:
+    train_size = int(validation_proportion * len(train_dataset))
+    validation_size = len(train_dataset) - train_size
+    if random_val_split:
+        train_dd, validation_dd = torch.utils.data.random_split(
+            train_dataset, [train_size, validation_size]
+        )
+    else:
+        # SEQUENTIAL
+        # train from 1:N; validation from N:-1
+        train_dd = Subset(train_dataset, np.arange(train_size))
+        validation_dd = Subset(train_dataset, np.arange(train_size, len(train_dataset)))
+
+    return train_dd, validation_dd
+
+
 if __name__ == "__main__":
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
@@ -304,16 +320,7 @@ if __name__ == "__main__":
     )
 
     # train-validation split
-    train_size = int(0.8 * len(dd))
-    validation_size = len(dd) - train_size
-    if RANDOM_VAL_SPLIT:
-        train_dd, validation_dd = torch.utils.data.random_split(
-            dd, [train_size, validation_size]
-        )
-    else:
-        # train from 1:N; validation from N:-1
-        train_dd = Subset(dd, np.arange(train_size))
-        validation_dd = Subset(dd, np.arange(train_size, len(dd)))
+    train_dd, validation_dd = train_validation_split(dd, random_val_split=RANDOM_VAL_SPLIT, validation_proportion=0.8)
 
     train_dl = DataLoader(
         train_dd, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS
@@ -361,7 +368,7 @@ if __name__ == "__main__":
         test_dl = val_dl
 
     preds = test(model, test_dl)
-    errors = calculate_errors(preds, TARGET_VAR)
+    errors = calculate_errors(preds, TARGET_VAR, model_str="s2s2s")
 
     assert False
 
