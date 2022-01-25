@@ -230,11 +230,10 @@ class FcastDataset(Dataset):
                     NAN_COUNTER += 1
                     continue
 
-                if target.shape[0] != self.target_horizon + 1:
+                if target.shape[0] != self.target_horizon:  # + 1
                     NAN_COUNTER += 1
                     continue
                 
-                # assert False
                 # SAVE ALL DATA to attribute
                 self.all_data[COUNTER] = {
                     "x_f": fcast,
@@ -335,10 +334,10 @@ class FcastDataset(Dataset):
             time=slice(forecast_init_time, forecast_init_time + horizon_td)
         )
         target = (
-            target  # target.isel(time=slice(-self.target_horizon, None))
+            target.isel(time=slice(-self.target_horizon, None)) # target
             .drop(self.spatial_dim)
             .to_dataframe()
-        )
+        ) 
         return target
 
     def _encode_times(
