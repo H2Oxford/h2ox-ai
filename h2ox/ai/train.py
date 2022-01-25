@@ -241,6 +241,7 @@ if __name__ == "__main__":
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
     from h2ox.scripts.utils import load_zscore_data
+    from h2ox.ai.utils import calculate_errors
     from definitions import ROOT_DIR
     from pathlib import Path
     import matplotlib.pyplot as plt
@@ -299,6 +300,7 @@ if __name__ == "__main__":
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
         target_var=TARGET_VAR,
+        mode="train"
     )
 
     # train-validation split
@@ -347,6 +349,7 @@ if __name__ == "__main__":
             historical_seq_len=SEQ_LEN,
             future_horizon=FUTURE_HORIZON,
             target_var=TARGET_VAR,
+            mode="test",
         )
 
         test_dl = DataLoader(
@@ -358,10 +361,11 @@ if __name__ == "__main__":
         test_dl = val_dl
 
     preds = test(model, test_dl)
+    errors = calculate_errors(preds, TARGET_VAR)
 
     assert False
 
-    # make the plot
+    # make the timeseries plots
     # f, axs = plt.subplots(3, 4, figsize=(6*4, 2*3), tight_layout=True, sharey=True, sharex=True)
     # random_times = np.random.choice(preds["initialisation_time"].values, size=12, replace=False)
 
@@ -370,3 +374,6 @@ if __name__ == "__main__":
     #     ax.plot(preds.sel(initialisation_time=time)["obs"], label="obs")
     #     ax.plot(preds.sel(initialisation_time=time)["sim"], label="sim")
     #     ax.set_title(time)
+
+    # make the forecast horizon plot 
+    errors.squeeze()["rmse"]
