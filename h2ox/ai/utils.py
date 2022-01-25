@@ -110,10 +110,12 @@ def normalize_data(
 
 
 # unnormalize
-def unnormalize_preds(preds: xr.Dataset, mean_: xr.Dataset, std_: xr.Dataset, target: str, sample: str):
+def unnormalize_preds(preds: xr.Dataset, mean_: xr.Dataset, std_: xr.Dataset, target: str, sample: str, sample_dim: str = "location") -> xr.Dataset:
+    if "sample" not in preds.coords:
+        preds = preds.assign_coords(sample=preds["sample"])
     # (Y * std) + mean
-    preds["obs"] = (preds["obs"].sel(sample=sample) * std_[target].sel(sample=sample).values) + mean_[target].sel(sample=sample).values
-    preds["sim"] = (preds["sim"].sel(sample=sample) * std_[target].sel(sample=sample).values) + mean_[target].sel(sample=sample).values
+    preds["obs"] = (preds["obs"].sel(initialisation_time=preds["sample"] == sample) * std_[target].sel({sample_dim: sample}).values) + mean_[target].sel({sample_dim: sample}).values
+    preds["sim"] = (preds["sim"].sel(initialisation_time=preds["sample"] == sample) * std_[target].sel({sample_dim: sample}).values) + mean_[target].sel({sample_dim: sample}).values
 
     return preds
 
