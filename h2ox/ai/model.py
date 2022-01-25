@@ -150,7 +150,6 @@ class S2S2SModel(nn.Module):
 
         # RUN FORECAST [0 -- 14]
         for t in range(0, self.forecast_horizon):
-            print(t)
             x_f = data["x_f"][:, t, :].unsqueeze(1)
 
             output, hidden, cell = self.decoder_forecast(x_f, hidden, cell)
@@ -164,7 +163,6 @@ class S2S2SModel(nn.Module):
 
         # RUN FUTURE [14 -- 90]
         for t in range(self.forecast_horizon, self.target_horizon):
-            print(t)
             x_ff = data["x_ff"][:, t - self.forecast_horizon, :].unsqueeze(1)
 
             output, hidden, cell = self.decoder_future(x_ff, hidden, cell)
