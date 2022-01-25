@@ -39,6 +39,9 @@ def initialise_training(model, device: str) -> Tuple[Any, Any, Any]:
 def train(
     model: nn.Module,
     train_dl: DataLoader,
+    optimizer: Any,
+    scheduler: Any,
+    loss_fn: nn.Module,
     epochs: int = 5,
     val_dl: Optional[DataLoader] = None,
     validate_every_n: int = 3,
@@ -47,8 +50,6 @@ def train(
     # move onto GPU (if exists)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
-
-    optimizer, scheduler, loss_fn = initialise_training(model, device=device)
 
     all_losses = []
     all_val_losses = []
@@ -316,7 +317,9 @@ if __name__ == "__main__":
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
         target_var=TARGET_VAR,
-        mode="train"
+        mode="train",
+        history_variables=HISTORY_VARIABLES,
+        forecast_variables=FORECAST_VARIABLES,
     )
 
     # train-validation split
@@ -335,7 +338,11 @@ if __name__ == "__main__":
     )
 
     # # train
-    losses, _ = train(model, train_dl, epochs=N_EPOCHS, val_dl=val_dl)
+    # TODO: how to config the loss_fn // optimizer etc. ?
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    optimizer, scheduler, loss_fn = initialise_training(model, device=device)
+
+    losses, _ = train(model, train_dl, optimizer=optimizer, scheduler=scheduler, loss_fn=loss_fn, epochs=N_EPOCHS, val_dl=val_dl)
     # plt.plot(losses)
 
     # # test
@@ -357,6 +364,9 @@ if __name__ == "__main__":
             future_horizon=FUTURE_HORIZON,
             target_var=TARGET_VAR,
             mode="test",
+            history_variables=HISTORY_VARIABLES,
+            forecast_variables=FORECAST_VARIABLES,
+
         )
 
         test_dl = DataLoader(
@@ -382,5 +392,5 @@ if __name__ == "__main__":
     #     ax.plot(preds.sel(initialisation_time=time)["sim"], label="sim")
     #     ax.set_title(time)
 
-    # make the forecast horizon plot 
-    errors.squeeze()["rmse"]
+    # # make the forecast horizon plot 
+    # errors.squeeze()["rmse"]
