@@ -4,6 +4,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
+import xskillscore as xs
 
 
 def encode_doys(
@@ -75,6 +76,18 @@ def create_model_experiment_folder(data_dir: Path, experiment_name: str, add_dat
     if not expt_dir.exists():
         expt_dir.mkdir()
     return expt_dir
+
+
+def calculate_errors(preds: xr.Dataset, var: str, time_dim: str = "initialisation_time", model_str: str = "s2s") -> xr.Dataset:
+    smp = np.unique(preds["sample"])[0]
+    pp = preds.drop("sample")
+
+    rmse = xs.rmse(pp["obs"], pp["sim"], dim=time_dim).expand_dims(model=[model_str]).expand_dims(sample=[smp]).expand_dims(variable=[var]).rename("rmse")
+    pearson = xs.pearson_r(pp["obs"], pp["sim"], dim=time_dim).expand_dims(model=[model_str]).expand_dims(sample=[smp]).expand_dims(variable=[var]).rename("pearson-r")
+    mape = xs.mape(pp["obs"], pp["sim"], dim=time_dim).expand_dims(model=[model_str]).expand_dims(sample=[smp]).expand_dims(variable=[var]).rename("mape")
+
+    errors = xr.merge([rmse, pearson, mape])
+    return errors
 
 
 # def create_model_save_str(extra_str: str = "") -> str:
