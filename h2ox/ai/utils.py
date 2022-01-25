@@ -1,4 +1,6 @@
 from typing import Union, Tuple, List
+from pathlib import Path
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -62,3 +64,29 @@ def make_future_data_of_ones(
 ) -> xr.Dataset:
     # create memory-efficient data for all of the forecast timesteps
     pass
+
+
+def create_model_experiment_folder(data_dir: Path, experiment_name: str, add_datetime: bool = False) -> Path:
+    if add_datetime:
+        date_str = datetime.now().strftime("%Y%M%d_%H%m")
+        experiment_name += "_" + date_str
+    
+    expt_dir = data_dir / experiment_name
+    if not expt_dir.exists():
+        expt_dir.mkdir()
+    return expt_dir
+
+
+# def create_model_save_str(extra_str: str = "") -> str:
+#     save_str = ""
+#     date_str = datetime.now().strftime("%Y%m%d_%H%M")
+#     save_str += f"TT{date_str}_{LOCATION}_{TARGET_VAR}_{TRAIN_MIN}{TRAIN_MAX}"
+#     save_str += f"_H{HIDDEN_SIZE}_BS{BATCH_SIZE}"
+#     save_str += "_diff" if DIFFED else ""
+#     save_str += "_deseas" if DESEAS else ""
+#     save_str += "_rolling" if ROLLING else ""
+
+#     # anything else to add?
+#     save_str += "_" + extra_str.replace(" ", "")
+
+#     return save_str

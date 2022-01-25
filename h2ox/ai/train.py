@@ -252,38 +252,40 @@ if __name__ == "__main__":
     TARGET_VAR = "volume_bcm"
     HISTORY_VARIABLES = ["tp", "t2m"]
     FORECAST_VARIABLES = ["tp", "t2m"]
-    # FUTURE_VARIABLES = []
     BATCH_SIZE = 32
-    TRAIN_END_DATE = "2011-01-01"
+    TRAIN_END_DATE = "2018-12-31"
     TRAIN_START_DATE = "2010-01-01"
+    TEST_START_DATE = "2019-01-01"
+    TEST_END_DATE = "2022-01-01"
     HIDDEN_SIZE = 64
     NUM_LAYERS = 1
     DROPOUT = 0.4
     NUM_WORKERS = 1
     N_EPOCHS = 10
     RANDOM_VAL_SPLIT = True
+    EVAL_TEST = True
 
     # load data
     data_dir = Path(ROOT_DIR / "data")
     target, history, forecast = load_zscore_data(data_dir)
 
+    # # select site
+    site_target = target.sel(location=[SITE])
+    site_history = history.sel(location=[SITE])
+    site_forecast = forecast.sel(location=[SITE])
+
     # get train data
-    train_target = target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
-    train_history = history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
-    train_forecast = forecast.sel(
+    train_target = site_target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_forecast = site_forecast.sel(
         initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE)
     )
 
-    # # select site
-    y = train_target.sel(location=[SITE])
-    x_d = train_history.sel(location=[SITE])
-    x_f = train_forecast.sel(location=[SITE])
-
     # load dataset
     dd = FcastDataset(
-        target=y,  # target,
-        history=x_d,  # history,
-        forecast=x_f,  # forecast,
+        target=train_target,  # target,
+        history=train_history,  # history,
+        forecast=train_forecast,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
@@ -319,7 +321,36 @@ if __name__ == "__main__":
     # plt.plot(losses)
 
     # # test
-    preds = test(model, val_dl)
+    if EVAL_TEST:
+        # get test data
+        # test_target = site_target.sel(time=slice(TEST_START_DATE, TEST_END_DATE))
+        # test_history = site_history.sel(time=slice(TEST_START_DATE, TEST_END_DATE))
+        test_forecast = site_forecast.sel(
+            initialisation_time=slice(TEST_START_DATE, TEST_END_DATE)
+        )
+
+        # load dataset
+        test_dd = FcastDataset(
+            target=site_target,  # target,
+            history=site_history,  # history,
+            forecast=test_forecast,  # forecast,
+            encode_doy=ENCODE_DOY,
+            historical_seq_len=SEQ_LEN,
+            future_horizon=FUTURE_HORIZON,
+            target_var=TARGET_VAR,
+        )
+
+        test_dl = DataLoader(
+            test_dd, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS
+        )
+    
+
+    else:
+        test_dl = val_dl
+
+    preds = test(model, test_dl)
+
+    assert False
 
     # make the plot
     # f, axs = plt.subplots(3, 4, figsize=(6*4, 2*3), tight_layout=True, sharey=True, sharex=True)
