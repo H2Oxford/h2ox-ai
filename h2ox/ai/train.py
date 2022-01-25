@@ -29,9 +29,9 @@ def initialise_training(model, device: str) -> Tuple[Any, Any, Any]:
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
 
     # use MSE Loss function
-    loss_fn = nn.MSELoss().to(device)
+    # loss_fn = nn.MSELoss().to(device)
     # loss_fn = nn.SmoothL1Loss().to(device)
-    # loss_fn = weighted_mse_loss
+    loss_fn = weighted_mse_loss
 
     return optimizer, scheduler, loss_fn
 
@@ -84,7 +84,7 @@ def train(
                 if catch_nans:
                     assert False, "Nans in data"
             else:  #  calculate loss
-                if loss_fn.__repr__() == "weighted_mse_loss":
+                if "weighted_mse_loss" in loss_fn.__repr__():
                     wt = get_exponential_weights(horizon=model.target_horizon).to(
                         device
                     )
@@ -140,7 +140,7 @@ def validate(model: nn.Module, validation_dl: DataLoader, loss_fn: nn.Module) ->
         y = data["y"]
 
         # calculate loss
-        if loss_fn.__repr__() == "weighted_mse_loss":
+        if "weighted_mse_loss" in loss_fn.__repr__():
             wt = get_exponential_weights(horizon=model.target_horizon).to(device)
             loss = loss_fn(yhat.squeeze(), y.squeeze(), wt)
         else:
