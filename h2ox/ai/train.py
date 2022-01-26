@@ -25,7 +25,7 @@ def initialise_training(model, device: str, loss_rate: float = 5e-2) -> Tuple[An
     optimizer = optim.Adam([pam for pam in model.parameters()], lr=loss_rate)  # 0.05
 
     # reduce loss rate every \step_size epochs by \gamma
-    # from initial \lr
+    #  from initial \lr
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
 
     # use MSE Loss function
@@ -109,8 +109,10 @@ def train(
                 f"Loss: {epoch_loss:.2f}  Lr: {learning_rate:.4f}  nans:  {count_nans}"
             )
 
+        # Scheduler for reducing the learning rate loss
         if scheduler is not None:
             scheduler.step()
+
         all_losses.append(epoch_loss)
         if epoch % validate_every_n == 0:
             # print(f"Current Losses: {all_losses}")
@@ -172,10 +174,10 @@ def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
             data, meta_lookup
         )
 
+        # save the predictions and the observations 
         obs = data["y"].squeeze().detach().cpu().numpy()
         sim = model(data).squeeze().detach().cpu().numpy()
 
-        # DO EVALUATION FUNCTIONS HERE TOO? faster??
         # Create a dictionary of the results
         eval_data["obs"].append(obs)
         eval_data["sim"].append(sim)
@@ -200,10 +202,6 @@ def _process_metadata(
         data["meta"]["target_times"].detach().cpu().numpy().astype("datetime64[ns]"),
         dtype="datetime64[m]",
     )
-    # input_times = np.array(
-    #     data["meta"]["input_times"].detach().cpu().numpy().astype("datetime64[ns]"),
-    #     dtype="datetime64[m]",
-    # )
 
     return samples, forecast_init_times, target_times
 
@@ -259,7 +257,7 @@ if __name__ == "__main__":
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
     from h2ox.scripts.utils import load_zscore_data
-    from h2ox.ai.utils import calculate_errors, normalize_data, unnormalize_preds
+    from h2ox.ai.utils import calculate_errors
     from definitions import ROOT_DIR
     from pathlib import Path
     import matplotlib.pyplot as plt
@@ -392,8 +390,6 @@ if __name__ == "__main__":
     errors = calculate_errors(preds, TARGET_VAR, model_str="s2s2s")
     print(errors["rmse"])
     print(errors["pearson-r"])
-
-    assert False
 
     # make the timeseries plots
     # f, axs = plt.subplots(3, 4, figsize=(6*4, 2*3), tight_layout=True, sharey=True, sharex=True)
