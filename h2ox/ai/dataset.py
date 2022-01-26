@@ -20,7 +20,6 @@ class FcastDataset(Dataset):
         history: xr.Dataset,
         forecast: xr.Dataset,
         target: xr.Dataset,
-        # future: pd.DataFrame,
         historical_seq_len: int = 60,
         future_horizon: int = 76,
         target_var: str = "PRESENT_STORAGE_TMC",
