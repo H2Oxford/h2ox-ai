@@ -1,6 +1,7 @@
-from typing import Union, Tuple, List
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import List, Tuple, Union
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -67,24 +68,50 @@ def make_future_data_of_ones(
     pass
 
 
-def create_model_experiment_folder(data_dir: Path, experiment_name: str, add_datetime: bool = False) -> Path:
+def create_model_experiment_folder(
+    data_dir: Path, experiment_name: str, add_datetime: bool = False
+) -> Path:
     if add_datetime:
         date_str = datetime.now().strftime("%Y%M%d_%H%m")
         experiment_name += "_" + date_str
-    
+
     expt_dir = data_dir / experiment_name
     if not expt_dir.exists():
         expt_dir.mkdir()
     return expt_dir
 
 
-def calculate_errors(preds: xr.Dataset, var: str, time_dim: str = "initialisation_time", model_str: str = "s2s") -> xr.Dataset:
+def calculate_errors(
+    preds: xr.Dataset,
+    var: str,
+    time_dim: str = "initialisation_time",
+    model_str: str = "s2s",
+) -> xr.Dataset:
     smp = np.unique(preds["sample"])[0]
     pp = preds.drop("sample")
 
-    rmse = xs.rmse(pp["obs"], pp["sim"], dim=time_dim).expand_dims(model=[model_str]).expand_dims(sample=[smp]).expand_dims(variable=[var]).rename("rmse")
-    pearson = xs.pearson_r(pp["obs"], pp["sim"], dim=time_dim).expand_dims(model=[model_str]).expand_dims(sample=[smp]).expand_dims(variable=[var]).rename("pearson-r")
-    mape = xs.mape(pp["obs"], pp["sim"], dim=time_dim).expand_dims(model=[model_str]).expand_dims(sample=[smp]).expand_dims(variable=[var]).rename("mape")
+    # TODO: use another library for these scores, xs dependency pip isntall hangs?
+    rmse = (
+        xs.rmse(pp["obs"], pp["sim"], dim=time_dim)
+        .expand_dims(model=[model_str])
+        .expand_dims(sample=[smp])
+        .expand_dims(variable=[var])
+        .rename("rmse")
+    )
+    pearson = (
+        xs.pearson_r(pp["obs"], pp["sim"], dim=time_dim)
+        .expand_dims(model=[model_str])
+        .expand_dims(sample=[smp])
+        .expand_dims(variable=[var])
+        .rename("pearson-r")
+    )
+    mape = (
+        xs.mape(pp["obs"], pp["sim"], dim=time_dim)
+        .expand_dims(model=[model_str])
+        .expand_dims(sample=[smp])
+        .expand_dims(variable=[var])
+        .rename("mape")
+    )
 
     errors = xr.merge([rmse, pearson, mape])
     return errors
@@ -110,12 +137,25 @@ def normalize_data(
 
 
 # unnormalize
-def unnormalize_preds(preds: xr.Dataset, mean_: xr.Dataset, std_: xr.Dataset, target: str, sample: str, sample_dim: str = "location") -> xr.Dataset:
+def unnormalize_preds(
+    preds: xr.Dataset,
+    mean_: xr.Dataset,
+    std_: xr.Dataset,
+    target: str,
+    sample: str,
+    sample_dim: str = "location",
+) -> xr.Dataset:
     if "sample" not in preds.coords:
         preds = preds.assign_coords(sample=preds["sample"])
     # (Y * std) + mean
-    preds["obs"] = (preds["obs"].sel(initialisation_time=preds["sample"] == sample) * std_[target].sel({sample_dim: sample}).values) + mean_[target].sel({sample_dim: sample}).values
-    preds["sim"] = (preds["sim"].sel(initialisation_time=preds["sample"] == sample) * std_[target].sel({sample_dim: sample}).values) + mean_[target].sel({sample_dim: sample}).values
+    preds["obs"] = (
+        preds["obs"].sel(initialisation_time=preds["sample"] == sample)
+        * std_[target].sel({sample_dim: sample}).values
+    ) + mean_[target].sel({sample_dim: sample}).values
+    preds["sim"] = (
+        preds["sim"].sel(initialisation_time=preds["sample"] == sample)
+        * std_[target].sel({sample_dim: sample}).values
+    ) + mean_[target].sel({sample_dim: sample}).values
 
     return preds
 
