@@ -61,7 +61,12 @@ def create_doy(values: List[int]) -> Tuple[List[float], ...]:
     return encode_doys(values, start_doy=1, end_doy=366)
 
 
-def calculate_errors(preds: xr.Dataset, var: str, time_dim: str = "initialisation_time", model_str: str = "s2s") -> xr.Dataset:
+def calculate_errors(
+    preds: xr.Dataset,
+    var: str,
+    time_dim: str = "initialisation_time",
+    model_str: str = "s2s",
+) -> xr.Dataset:
     smp = np.unique(preds["sample"])[0]
     pp = preds.drop("sample")
 
