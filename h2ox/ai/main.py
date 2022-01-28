@@ -33,7 +33,7 @@ def main(
     eval_test: bool,
     n_epochs: int,
 ) -> int:
-
+    print("I am on line36 in main.py")
     data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)
     history = history.merge(target)
@@ -47,7 +47,7 @@ def main(
     train_forecast = site_forecast.sel(
         initialisation_time=slice(train_start_date, train_end_date)
     )
-
+    
     dd = FcastDataset(
         target=site_target,  # target,
         history=site_history,  # history,
@@ -65,7 +65,6 @@ def main(
     train_dd, validation_dd = train_validation_split(
         dd, random_val_split=random_val_split, validation_proportion=0.8
     )
-
     train_dl = DataLoader(
         train_dd, batch_size=batch_size, shuffle=False, num_workers=num_workers
     )
@@ -75,7 +74,7 @@ def main(
 
     # initialise model
     model = initialise_model(
-        train_dl, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
+        dd, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
     )
 
     # # train

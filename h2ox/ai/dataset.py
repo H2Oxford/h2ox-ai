@@ -213,6 +213,11 @@ class FcastDataset(Dataset):
                 #  (horizon, len(forecast_variables))
                 fcast = fcast[self.forecast_variables]
 
+                # SAVE SIZES (for initialising the model later)
+                self.historical_input_size = history.shape[1]
+                self.forecast_input_size = fcast.shape[1]
+                self.future_input_size = future.shape[1]
+
                 # SKIP NANS
                 # (y only in training period)
                 if self.mode == "train":
