@@ -1,16 +1,15 @@
 from pathlib import Path
 from types import MappingProxyType
-from typing import List
+from typing import List, Dict, Any, Callable
 
 import torch
-from definitions import ROOT_DIR
 from sacred import Experiment
 from torch.utils.data import DataLoader
 
 from h2ox.ai.dataset import FcastDataset
 from h2ox.ai.model import initialise_model
 from h2ox.ai.train import initialise_training, train, train_validation_split
-from h2ox.scripts.utils import load_zscore_data
+from h2ox.ai.scripts.utils import load_zscore_data
 
 # instantiate the Experiment class
 ex = Experiment("fcast", interactive=True)
@@ -34,8 +33,8 @@ def main(
     train_start_date: str = "2010-01-01",
     test_start_date: str = "2019-01-01",
     test_end_date: str = "2022-01-01",
-    history_variables: List[str, str] = MappingProxyType(["tp", "t2m"]),
-    forecast_variables: List[str, str] = MappingProxyType(["tp", "t2m"]),
+    history_variables: List[str] = ["tp", "t2m"],
+    forecast_variables: List[str] = ["tp", "t2m"],
     encode_doy: bool = True,
     site: str = "kabini",
     batch_size: int = 32,
@@ -48,7 +47,7 @@ def main(
     n_epochs: int = 30,
 ):
     # load data
-    data_dir = Path(ROOT_DIR / "data")
+    data_dir = Path.cwd() / "data"
     target, history, forecast = load_zscore_data(data_dir)
     history = history.merge(target)
 
@@ -89,7 +88,7 @@ def main(
 
     # initialise model
     model = initialise_model(
-        train_dl, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
+        dd, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
     )
 
     # # train
@@ -110,9 +109,19 @@ def main(
     # plt.plot(losses)
 
 
+def get_correct_keys(conf: Dict[str, Any], func: Callable) -> Dict[str, Any]:
+    varnames = func.__code__.co_varnames
+    return {k: conf[k] for k in varnames if k in conf.keys()}
+
+
 if __name__ == "__main__":
     # parameters from the yaml file
     ex.add_config("conf.yaml")
-
-    ex.run_commandline()
-    # main()
+    
+    # get the correct keys from the config file to pass to main()
+    config_obj = ex.configurations[0]._conf
+    conf = get_correct_keys(config_obj, main)
+    
+    # assert False
+    # ex.run_commandline()
+    main(**conf)
