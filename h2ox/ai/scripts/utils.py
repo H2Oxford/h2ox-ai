@@ -1,8 +1,10 @@
-from typing import Tuple
 from pathlib import Path
-import pandas as pd
+from typing import Tuple
+
 import numpy as np
+import pandas as pd
 import xarray as xr
+
 from definitions import ROOT_DIR
 
 
@@ -89,7 +91,7 @@ def interim_zscore_dataframes_to_xarray(ds: xr.Dataset) -> Tuple[xr.Dataset, ...
 
 def load_zscore_data(data_dir: Path) -> Tuple[xr.Dataset, ...]:
     df = read_interim_zscore_data(data_dir)
-    train_test_set = original_experiment_splits(df)
+    original_experiment_splits(df)
 
     ds = df.to_xarray()
     target, history, forecast = interim_zscore_dataframes_to_xarray(ds)
@@ -171,10 +173,14 @@ def original_experiment_splits(df: pd.DataFrame) -> pd.DataFrame:
     val = df.reset_index().query("set == 'val'").date.unique()
     test = df.reset_index().query("set == 'test'").date.unique()
 
-    return pd.DataFrame({
-        "set": np.concatenate([["train" for _ in train], ["val" for _ in val], ["test" for _ in test]]),
-        "date": np.concatenate([train, val, test]),
-    })
+    return pd.DataFrame(
+        {
+            "set": np.concatenate(
+                [["train" for _ in train], ["val" for _ in val], ["test" for _ in test]]
+            ),
+            "date": np.concatenate([train, val, test]),
+        }
+    )
 
 
 # def get_train_test_val_times(forecast: xr.Dataset, train_test_set: pd.DataFrame) -> pd.DataFrame:
@@ -187,7 +193,6 @@ def original_experiment_splits(df: pd.DataFrame) -> pd.DataFrame:
 #         "set": np.concatenate([["train" for _ in train_times], ["val" for _ in val_times], ["test" for _ in test_times]]),
 #         "yrmnth": np.concatenate([train_times, val_times, test_times]),
 #     })
-
 
 
 if __name__ == "__main__":
