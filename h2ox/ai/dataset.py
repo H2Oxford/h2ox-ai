@@ -1,6 +1,5 @@
 from collections import defaultdict
 from pathlib import Path
-from types import MappingProxyType
 from typing import DefaultDict, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -25,8 +24,8 @@ class FcastDataset(Dataset):
         historical_seq_len: int = 60,
         future_horizon: int = 76,
         target_var: str = "PRESENT_STORAGE_TMC",
-        history_variables: List[str] = MappingProxyType(["t2m"]),
-        forecast_variables: List[str] = MappingProxyType(["t2m"]),
+        history_variables: List[str] = ["t2m"],  # noqa
+        forecast_variables: List[str] = ["t2m"],  # noqa
         encode_doy: bool = True,
         mode: str = "train",
         spatial_dim: str = "location",
