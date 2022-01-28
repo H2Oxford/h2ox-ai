@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from torch import nn
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 
 class Encoder(nn.Module):
@@ -178,16 +178,15 @@ class S2S2SModel(nn.Module):
 
 
 def initialise_model(
-    dl: DataLoader, hidden_size: int = 64, num_layers: int = 1, dropout: float = 0.4
+    dd: Dataset, hidden_size: int = 64, num_layers: int = 1, dropout: float = 0.4
 ) -> S2S2SModel:
     # initialise model shapes
-    data_example = dl.__iter__().__next__()
-    forecast_horizon = data_example["x_f"].shape[1]
-    future_horizon = data_example["x_ff"].shape[1]
+    forecast_horizon = dd.forecast_horizon
+    future_horizon = dd.future_horizon
 
-    historical_input_size = data_example["x_d"].shape[-1]
-    forecast_input_size = data_example["x_f"].shape[-1]
-    future_input_size = data_example["x_ff"].shape[-1]
+    historical_input_size = dd.historical_input_size
+    forecast_input_size = dd.forecast_input_size
+    future_input_size = dd.future_input_size
 
     model = S2S2SModel(
         forecast_horizon=forecast_horizon,
