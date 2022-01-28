@@ -1,14 +1,16 @@
-from typing import Dict, Union, List, Optional, DefaultDict, Tuple
 from collections import defaultdict
-from tqdm import tqdm
 from pathlib import Path
-import pandas as pd
+from types import MappingProxyType
+from typing import DefaultDict, Dict, List, Optional, Tuple, Union
+
 import numpy as np
-from definitions import ROOT_DIR
-from torch.utils.data import Dataset
-from torch import Tensor
+import pandas as pd
 import torch
 import xarray as xr
+from torch import Tensor
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
 from h2ox.ai.data_utils import create_doy
 
 
@@ -23,8 +25,8 @@ class FcastDataset(Dataset):
         historical_seq_len: int = 60,
         future_horizon: int = 76,
         target_var: str = "PRESENT_STORAGE_TMC",
-        history_variables: List[str] = ["t2m"],
-        forecast_variables: List[str] = ["t2m"],
+        history_variables: List[str] = MappingProxyType(["t2m"]),
+        forecast_variables: List[str] = MappingProxyType(["t2m"]),
         encode_doy: bool = True,
         mode: str = "train",
         spatial_dim: str = "location",
@@ -45,7 +47,9 @@ class FcastDataset(Dataset):
         self.mode = mode
         self.cache = cache
         if self.cache:
-            assert experiment_dir is not None, "Must specify an experiment directory if cache is True"
+            assert (
+                experiment_dir is not None
+            ), "Must specify an experiment directory if cache is True"
         self.experiment_dir = experiment_dir
         # variables
         self.target_var = target_var
@@ -93,9 +97,9 @@ class FcastDataset(Dataset):
         return self.n_samples
 
     def __repr__(self) -> str:
-        total_str = f"FcastDataset\n"
-        total_str += f"------------\n"
-        total_str += f"\n"
+        total_str = "FcastDataset\n"
+        total_str += "------------\n"
+        total_str += "\n"
         total_str += f"Size: {self.__len__()}\n"
         total_str += f"Dataset: {self.mode}\n"
         total_str += f"target: {self.target_var}\n"
@@ -125,7 +129,6 @@ class FcastDataset(Dataset):
         total_str += f"LOCATIONS: {self.forecast[self.spatial_dim].values}\n"
 
         return total_str
-
 
     def engineer_arrays(self):
         """Create an `all_data` attribute which stores all the data
@@ -166,7 +169,9 @@ class FcastDataset(Dataset):
             # create data samples for each initialisation_date
             # history = self.seq_len days before the forecast
             # target = forecast_horizon + future_horizon
-            pbar = tqdm(forecast_init_times, desc=f"Building data for {sample} [{self.mode}]")
+            pbar = tqdm(
+                forecast_init_times, desc=f"Building data for {sample} [{self.mode}]"
+            )
             for forecast_init_time in pbar:
                 # init pbar
                 str_time = np.datetime_as_string(forecast_init_time, unit="h")
@@ -233,10 +238,10 @@ class FcastDataset(Dataset):
                     NAN_COUNTER += 1
                     continue
 
-                if target.shape[0] != self.target_horizon:  # + 1
+                if target.shape[0] != self.target_horizon:  # + 1
                     NAN_COUNTER += 1
                     continue
-                
+
                 # SAVE ALL DATA to attribute
                 self.all_data[COUNTER] = {
                     "x_f": fcast,
@@ -256,11 +261,11 @@ class FcastDataset(Dataset):
         if self.cache:
             # save metadata/check metadata (to check for match)
             # cache to disk
-            self.experiment_dir 
-            "sample_lookup.pkl"
-            "all_data.pkl"
-            assert False, "TODO: needs to implement cacheing of data?"
-        pass
+            # self.experiment_dir
+            # "sample_lookup.pkl"
+            # "all_data.pkl"
+            # assert False, "TODO: needs to implement cacheing of data?"
+            pass
 
     def _get_historical_data(
         self,
@@ -340,10 +345,10 @@ class FcastDataset(Dataset):
             time=slice(forecast_init_time, forecast_init_time + horizon_td)
         )
         target = (
-            target.isel(time=slice(-self.target_horizon, None)) # target
+            target.isel(time=slice(-self.target_horizon, None))  # target
             .drop(self.spatial_dim)
             .to_dataframe()
-        ) 
+        )
         return target
 
     def _encode_times(
@@ -422,7 +427,6 @@ def print_instance(dd: FcastDataset, instance: int):
 
 if __name__ == "__main__":
     from h2ox.scripts.utils import load_zscore_data
-    from h2ox.ai.data_utils import encode_doys, create_doy
 
     # parameters for the yaml file
     ENCODE_DOY = True
@@ -444,7 +448,7 @@ if __name__ == "__main__":
     RANDOM_VAL_SPLIT = True
 
     # load data
-    data_dir = Path(ROOT_DIR / "data")
+    data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)
 
     # create future data (x_ff)
@@ -497,7 +501,8 @@ if __name__ == "__main__":
 
     final_t = dd[0]["x_d"][-1, :]
     first_t = dd[0]["y"][0, :]
-    location=dd.get_meta(0)[0]; time=dd.get_meta(0)[1]
+    location = dd.get_meta(0)[0]
+    time = dd.get_meta(0)[1]
     # check numbers match
     print("History")
     print(final_t[:2])
@@ -506,10 +511,8 @@ if __name__ == "__main__":
     print("Target")
     print(first_t)
     print(target.sel(location=location, time=time).to_array().values)
-    
+
     data_y = site_target
     target_horizon_td = pd.Timedelta(f"{dd.target_horizon}D")
     dd._get_target_data(data_y, forecast_init_time=time, horizon_td=target_horizon_td)
     forecast.sel(location=location, initialisation_time=time)
-
-    assert False

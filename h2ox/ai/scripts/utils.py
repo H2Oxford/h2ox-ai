@@ -5,8 +5,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from definitions import ROOT_DIR
-
 
 def read_interim_zscore_data(data_dir: Path) -> pd.DataFrame:
     # load the data into xarray object
@@ -196,7 +194,7 @@ def original_experiment_splits(df: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    data_dir = Path(ROOT_DIR / "data")
+    data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)
     sam_data, meta = load_samantha_data(data_dir)
     bigq_meta = load_reservoir_metas(data_dir)

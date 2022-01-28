@@ -1,16 +1,15 @@
-from typing import Tuple, Any, DefaultDict, List, Dict, Optional
 import socket
-import numpy as np
-import xarray as xr
 from collections import defaultdict
-from tqdm import tqdm
-from torch import optim
+from typing import Any, DefaultDict, Dict, List, Optional, Tuple
+
+import numpy as np
 import torch
-from torch import nn
-from torch.utils.data import DataLoader
-from torch.utils.data import Subset
+import xarray as xr
+from torch import nn, optim
+from torch.utils.data import DataLoader, Subset
+from tqdm import tqdm
+
 from h2ox.ai.dataset import FcastDataset
-from h2ox.ai.model import S2S2SModel
 from h2ox.ai.train_utils import get_exponential_weights
 
 
@@ -20,9 +19,11 @@ def weighted_mse_loss(
     return torch.sum(weight * (input - target) ** 2)
 
 
-def initialise_training(model, device: str, loss_rate: float = 5e-2) -> Tuple[Any, Any, Any]:
+def initialise_training(
+    model, device: str, loss_rate: float = 5e-2
+) -> Tuple[Any, Any, Any]:
     # use ADAM optimizer
-    optimizer = optim.Adam([pam for pam in model.parameters()], lr=loss_rate)  # 0.05
+    optimizer = optim.Adam([pam for pam in model.parameters()], lr=loss_rate)  # 0.05
 
     # reduce loss rate every \step_size epochs by \gamma
     #  from initial \lr
@@ -38,6 +39,7 @@ def initialise_training(model, device: str, loss_rate: float = 5e-2) -> Tuple[An
 
 def _dump_model():
     pass
+
 
 def train(
     model: nn.Module,
@@ -85,7 +87,7 @@ def train(
             if y.nelement() == 0:
                 count_nans += 1
                 if catch_nans:
-                    assert False, "Nans in data"
+                    raise NotImplementedError
             else:  #  calculate loss
                 if "weighted_mse_loss" in loss_fn.__repr__():
                     wt = get_exponential_weights(horizon=model.target_horizon).to(
@@ -95,7 +97,7 @@ def train(
                 else:
                     loss = loss_fn(yhat.squeeze(), y.squeeze())
                 if torch.isnan(loss):
-                    assert False, "Nan inputs..."
+                    raise NotImplementedError
 
                 #  calculate gradients and change weights
                 loss.backward()
@@ -133,7 +135,7 @@ def validate(model: nn.Module, validation_dl: DataLoader, loss_fn: nn.Module) ->
     model.to(device)
 
     model.eval()
-    pbar = tqdm(validation_dl, f"Validation")
+    pbar = tqdm(validation_dl, "Validation")
 
     losses = []
     for data in pbar:
@@ -177,7 +179,7 @@ def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
             data, meta_lookup
         )
 
-        # save the predictions and the observations 
+        # save the predictions and the observations
         obs = data["y"].squeeze().detach().cpu().numpy()
         sim = model(data).squeeze().detach().cpu().numpy()
 
@@ -240,7 +242,11 @@ def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]]) -> xr.Datase
     return ds
 
 
-def train_validation_split(train_dataset: FcastDataset, random_val_split: bool, validation_proportion: float=0.8) -> Tuple[FcastDataset, FcastDataset]:
+def train_validation_split(
+    train_dataset: FcastDataset,
+    random_val_split: bool,
+    validation_proportion: float = 0.8,
+) -> Tuple[FcastDataset, FcastDataset]:
     train_size = int(validation_proportion * len(train_dataset))
     validation_size = len(train_dataset) - train_size
     if random_val_split:
@@ -257,13 +263,15 @@ def train_validation_split(train_dataset: FcastDataset, random_val_split: bool, 
 
 
 if __name__ == "__main__":
+    from pathlib import Path
+
+    import matplotlib.pyplot as plt
+    from definitions import ROOT_DIR
+
+    from h2ox.ai.data_utils import calculate_errors
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
     from h2ox.scripts.utils import load_zscore_data
-    from h2ox.ai.data_utils import calculate_errors
-    from definitions import ROOT_DIR
-    from pathlib import Path
-    import matplotlib.pyplot as plt
 
     # parameters for the yaml file
     ENCODE_DOY = True
@@ -285,15 +293,15 @@ if __name__ == "__main__":
     N_EPOCHS = 30
     RANDOM_VAL_SPLIT = True
     EVAL_TEST = True
-    
-    if socket.gethostname() == 'Tommy-Lees-MacBook-Air.local':
+
+    if socket.gethostname() == "Tommy-Lees-MacBook-Air.local":
         # if on tommy laptop then only running tests
         TRAIN_END_DATE = "2011-01-01"
         TRAIN_START_DATE = "2010-01-01"
         EVAL_TEST = False
         N_EPOCHS = 10
         NUM_WORKERS = 1
-  
+
     # load data
     data_dir = Path(ROOT_DIR / "data")
     target, history, forecast = load_zscore_data(data_dir)
@@ -330,7 +338,9 @@ if __name__ == "__main__":
     )
 
     # train-validation split
-    train_dd, validation_dd = train_validation_split(dd, random_val_split=RANDOM_VAL_SPLIT, validation_proportion=0.8)
+    train_dd, validation_dd = train_validation_split(
+        dd, random_val_split=RANDOM_VAL_SPLIT, validation_proportion=0.8
+    )
 
     train_dl = DataLoader(
         train_dd, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS
@@ -347,9 +357,19 @@ if __name__ == "__main__":
     # # train
     # TODO: how to config the loss_fn // optimizer etc. ?
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    optimizer, scheduler, loss_fn = initialise_training(model, device=device, loss_rate=1e-3)
+    optimizer, scheduler, loss_fn = initialise_training(
+        model, device=device, loss_rate=1e-3
+    )
 
-    losses, _ = train(model, train_dl, optimizer=optimizer, scheduler=scheduler, loss_fn=loss_fn, epochs=N_EPOCHS, val_dl=val_dl)
+    losses, _ = train(
+        model,
+        train_dl,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        loss_fn=loss_fn,
+        epochs=N_EPOCHS,
+        val_dl=val_dl,
+    )
     # plt.plot(losses)
 
     # # test
@@ -374,19 +394,17 @@ if __name__ == "__main__":
             mode="test",
             history_variables=HISTORY_VARIABLES,
             forecast_variables=FORECAST_VARIABLES,
-
         )
 
         test_dl = DataLoader(
             test_dd, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS
         )
-    
 
     else:
         test_dl = val_dl
 
     preds = test(model, test_dl)
-    
+
     # unnormalize preds
     # preds = unnormalize_preds(preds, mean_target, std_target, target=TARGET_VAR, sample=SITE)
 
@@ -404,6 +422,6 @@ if __name__ == "__main__":
     #     ax.plot(preds.sel(initialisation_time=time)["sim"], label="sim")
     #     ax.set_title(time)
 
-    # # make the forecast horizon plot 
+    # # make the forecast horizon plot
     f, ax = plt.subplots(figsize=(12, 6))
     errors.squeeze()["rmse"].plot(ax=ax)
