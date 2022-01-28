@@ -1,5 +1,8 @@
 # Custom
 .DS_Store
+experiments/**/*.txt
+experiments/**/*.json
+experiments/_sources
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
