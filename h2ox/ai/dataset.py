@@ -1,14 +1,16 @@
-from typing import Dict, Union, List, Optional, DefaultDict, Tuple
 from collections import defaultdict
-from tqdm import tqdm
 from pathlib import Path
-import pandas as pd
+from types import MappingProxyType
+from typing import DefaultDict, Dict, List, Optional, Tuple, Union
+
 import numpy as np
-from definitions import ROOT_DIR
-from torch.utils.data import Dataset
-from torch import Tensor
+import pandas as pd
 import torch
 import xarray as xr
+from torch import Tensor
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
 from h2ox.ai.data_utils import create_doy
 
 
@@ -23,8 +25,8 @@ class FcastDataset(Dataset):
         historical_seq_len: int = 60,
         future_horizon: int = 76,
         target_var: str = "PRESENT_STORAGE_TMC",
-        history_variables: List[str] = ["t2m"],
-        forecast_variables: List[str] = ["t2m"],
+        history_variables: List[str] = MappingProxyType(["t2m"]),
+        forecast_variables: List[str] = MappingProxyType(["t2m"]),
         encode_doy: bool = True,
         mode: str = "train",
         spatial_dim: str = "location",
@@ -95,9 +97,9 @@ class FcastDataset(Dataset):
         return self.n_samples
 
     def __repr__(self) -> str:
-        total_str = f"FcastDataset\n"
-        total_str += f"------------\n"
-        total_str += f"\n"
+        total_str = "FcastDataset\n"
+        total_str += "------------\n"
+        total_str += "\n"
         total_str += f"Size: {self.__len__()}\n"
         total_str += f"Dataset: {self.mode}\n"
         total_str += f"target: {self.target_var}\n"
@@ -259,11 +261,11 @@ class FcastDataset(Dataset):
         if self.cache:
             # save metadata/check metadata (to check for match)
             # cache to disk
-            self.experiment_dir
-            "sample_lookup.pkl"
-            "all_data.pkl"
-            assert False, "TODO: needs to implement cacheing of data?"
-        pass
+            # self.experiment_dir
+            # "sample_lookup.pkl"
+            # "all_data.pkl"
+            # assert False, "TODO: needs to implement cacheing of data?"
+            pass
 
     def _get_historical_data(
         self,
@@ -446,7 +448,7 @@ if __name__ == "__main__":
     RANDOM_VAL_SPLIT = True
 
     # load data
-    data_dir = Path(ROOT_DIR / "data")
+    data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)
 
     # create future data (x_ff)
@@ -514,5 +516,3 @@ if __name__ == "__main__":
     target_horizon_td = pd.Timedelta(f"{dd.target_horizon}D")
     dd._get_target_data(data_y, forecast_init_time=time, horizon_td=target_horizon_td)
     forecast.sel(location=location, initialisation_time=time)
-
-    assert False
