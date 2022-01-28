@@ -1,16 +1,15 @@
-from typing import Tuple, Any, DefaultDict, List, Dict, Optional
 import socket
-import numpy as np
-import xarray as xr
 from collections import defaultdict
-from tqdm import tqdm
-from torch import optim
+from typing import Any, DefaultDict, Dict, List, Optional, Tuple
+
+import numpy as np
 import torch
-from torch import nn
-from torch.utils.data import DataLoader
-from torch.utils.data import Subset
+import xarray as xr
+from torch import nn, optim
+from torch.utils.data import DataLoader, Subset
+from tqdm import tqdm
+
 from h2ox.ai.dataset import FcastDataset
-from h2ox.ai.model import S2S2SModel
 from h2ox.ai.train_utils import get_exponential_weights
 
 
@@ -88,7 +87,7 @@ def train(
             if y.nelement() == 0:
                 count_nans += 1
                 if catch_nans:
-                    assert False, "Nans in data"
+                    raise NotImplementedError
             else:  #  calculate loss
                 if "weighted_mse_loss" in loss_fn.__repr__():
                     wt = get_exponential_weights(horizon=model.target_horizon).to(
@@ -98,7 +97,7 @@ def train(
                 else:
                     loss = loss_fn(yhat.squeeze(), y.squeeze())
                 if torch.isnan(loss):
-                    assert False, "Nan inputs..."
+                    raise NotImplementedError
 
                 #  calculate gradients and change weights
                 loss.backward()
@@ -136,7 +135,7 @@ def validate(model: nn.Module, validation_dl: DataLoader, loss_fn: nn.Module) ->
     model.to(device)
 
     model.eval()
-    pbar = tqdm(validation_dl, f"Validation")
+    pbar = tqdm(validation_dl, "Validation")
 
     losses = []
     for data in pbar:
@@ -264,13 +263,15 @@ def train_validation_split(
 
 
 if __name__ == "__main__":
+    from pathlib import Path
+
+    import matplotlib.pyplot as plt
+    from definitions import ROOT_DIR
+
+    from h2ox.ai.data_utils import calculate_errors
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
     from h2ox.scripts.utils import load_zscore_data
-    from h2ox.ai.data_utils import calculate_errors
-    from definitions import ROOT_DIR
-    from pathlib import Path
-    import matplotlib.pyplot as plt
 
     # parameters for the yaml file
     ENCODE_DOY = True
