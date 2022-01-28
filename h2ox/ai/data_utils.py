@@ -1,6 +1,4 @@
 from typing import Union, Tuple, List
-from pathlib import Path
-from datetime import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -58,24 +56,6 @@ def assign_sin_cos_doy_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 def create_doy(values: List[int]) -> Tuple[List[float], ...]:
     # create day of year feature
     return encode_doys(values, start_doy=1, end_doy=366)
-
-
-def make_future_data_of_ones(
-    min_date: pd.Timestamp, max_date: pd.Timestamp, future_horizon: int
-) -> xr.Dataset:
-    # create memory-efficient data for all of the forecast timesteps
-    pass
-
-
-def create_model_experiment_folder(data_dir: Path, experiment_name: str, add_datetime: bool = False) -> Path:
-    if add_datetime:
-        date_str = datetime.now().strftime("%Y%M%d_%H%m")
-        experiment_name += "_" + date_str
-    
-    expt_dir = data_dir / experiment_name
-    if not expt_dir.exists():
-        expt_dir.mkdir()
-    return expt_dir
 
 
 def calculate_errors(preds: xr.Dataset, var: str, time_dim: str = "initialisation_time", model_str: str = "s2s") -> xr.Dataset:

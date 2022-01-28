@@ -36,6 +36,9 @@ def initialise_training(model, device: str, loss_rate: float = 5e-2) -> Tuple[An
     return optimizer, scheduler, loss_fn
 
 
+def _dump_model():
+    pass
+
 def train(
     model: nn.Module,
     train_dl: DataLoader,
@@ -257,7 +260,7 @@ if __name__ == "__main__":
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
     from h2ox.scripts.utils import load_zscore_data
-    from h2ox.ai.utils import calculate_errors
+    from h2ox.ai.data_utils import calculate_errors
     from definitions import ROOT_DIR
     from pathlib import Path
     import matplotlib.pyplot as plt

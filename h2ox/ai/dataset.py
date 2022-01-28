@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from torch import Tensor
 import torch
 import xarray as xr
-from h2ox.ai.utils import create_doy
+from h2ox.ai.data_utils import create_doy
 
 
 # ASSUMES: "time" is the named dimension/index column
@@ -30,7 +30,8 @@ class FcastDataset(Dataset):
         spatial_dim: str = "location",
         forecast_initialisation_dim: str = "initialisation_time",
         forecast_horizon_dim: str = "forecast_horizon",
-        cache: bool = True,
+        cache: bool = False,
+        experiment_dir: Optional[Path] = None,
     ):
         # TODO: check that date column is saved as "time"
         # store data in memory
@@ -43,6 +44,9 @@ class FcastDataset(Dataset):
         # ATTRIBUTES
         self.mode = mode
         self.cache = cache
+        if self.cache:
+            assert experiment_dir is not None, "Must specify an experiment directory if cache is True"
+        self.experiment_dir = experiment_dir
         # variables
         self.target_var = target_var
         self.history_variables = history_variables
@@ -250,9 +254,12 @@ class FcastDataset(Dataset):
         self.times = forecast_init_times
 
         if self.cache:
-            # cache to disk
             # save metadata/check metadata (to check for match)
-            pass
+            # cache to disk
+            self.experiment_dir 
+            "sample_lookup.pkl"
+            "all_data.pkl"
+            assert False, "TODO: needs to implement cacheing of data?"
         pass
 
     def _get_historical_data(
@@ -415,7 +422,7 @@ def print_instance(dd: FcastDataset, instance: int):
 
 if __name__ == "__main__":
     from h2ox.scripts.utils import load_zscore_data
-    from h2ox.ai.utils import encode_doys, create_doy
+    from h2ox.ai.data_utils import encode_doys, create_doy
 
     # parameters for the yaml file
     ENCODE_DOY = True
