@@ -1,3 +1,12 @@
+"""[summary]
+
+TODO:
+    - run experiments to check model performances
+    - reservoirs at the same endpoint, how to implement this?
+    - app.py (vertex ai implementation to serve the model)
+Returns:
+    [type]: [description]
+"""
 from pathlib import Path
 from typing import List
 
