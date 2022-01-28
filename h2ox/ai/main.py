@@ -33,7 +33,6 @@ def main(
     eval_test: bool,
     n_epochs: int,
 ) -> int:
-    print("I am on line36 in main.py")
     data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)
     history = history.merge(target)
