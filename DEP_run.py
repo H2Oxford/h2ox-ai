@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from h2ox.ai.dataset import FcastDataset
 from h2ox.ai.model import initialise_model
 from h2ox.ai.train import initialise_training, train, train_validation_split
-from h2ox.ai.scripts.utils import load_zscore_data
+from h2ox.ai.scripts.utils import load_zscore_data, load_samantha_updated_data
 
 # instantiate the Experiment class
 ex = Experiment("fcast", interactive=True)
@@ -49,6 +49,7 @@ def main(
     # load data
     data_dir = Path.cwd() / "data"
     target, history, forecast = load_zscore_data(data_dir)
+    sam_data = load_samantha_updated_data(data_dir)
     history = history.merge(target)
 
     # select site
@@ -117,11 +118,11 @@ def get_correct_keys(conf: Dict[str, Any], func: Callable) -> Dict[str, Any]:
 if __name__ == "__main__":
     # parameters from the yaml file
     ex.add_config("conf.yaml")
-    
+
     # get the correct keys from the config file to pass to main()
     config_obj = ex.configurations[0]._conf
     conf = get_correct_keys(config_obj, main)
-    
+
     # assert False
     # ex.run_commandline()
     main(**conf)
