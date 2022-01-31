@@ -209,8 +209,7 @@ if __name__ == "__main__":
     # initialise model
     # run model forward
     from h2ox.ai.dataset import FcastDataset
-    from h2ox.scripts.utils import load_zscore_data
-    from definitions import ROOT_DIR
+    from h2ox.ai.scripts.utils import load_zscore_data
     from pathlib import Path
     from torch.utils.data import DataLoader
 
@@ -234,7 +233,7 @@ if __name__ == "__main__":
     RANDOM_VAL_SPLIT = True
 
     # load data
-    data_dir = Path(ROOT_DIR / "data")
+    data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)
 
     # get train data
@@ -253,7 +252,7 @@ if __name__ == "__main__":
     dd = FcastDataset(
         target=y,  # target,
         history=x_d,  # history,
-        forecast=x_f,  # forecast,
+        forecast=None,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
@@ -264,16 +263,13 @@ if __name__ == "__main__":
     dl = DataLoader(dd, batch_size=BATCH_SIZE, shuffle=False)
 
     # initialise model shapes
-    data_example = dl.__iter__().__next__()
-    seq_length = data_example["x_d"].shape[1]
+    # initialise model shapes
+    forecast_horizon = dd.forecast_horizon
+    future_horizon = dd.future_horizon
 
-    forecast_horizon = data_example["x_f"].shape[1]
-    future_horizon = data_example["x_ff"].shape[1]
-    total_horizon = forecast_horizon + future_horizon + 1
-
-    historical_input_size = data_example["x_d"].shape[-1]
-    forecast_input_size = data_example["x_f"].shape[-1]
-    future_input_size = data_example["x_ff"].shape[-1]
+    historical_input_size = dd.historical_input_size
+    forecast_input_size = dd.forecast_input_size
+    future_input_size = dd.future_input_size
 
     model = S2S2SModel(
         forecast_horizon=forecast_horizon,
@@ -286,6 +282,7 @@ if __name__ == "__main__":
         dropout=DROPOUT,
     )
 
+    data_example = dl.__iter__().__next__()
     yhat = model(data_example)
     # assert yhat.shape == (
     #     BATCH_SIZE,

@@ -7,6 +7,7 @@ from loguru import logger
 from sacred import Experiment
 from sacred.observers import FileStorageObserver, GoogleCloudStorageObserver
 
+
 CONFIG_PATH = Path.cwd() / "conf.yaml"
 GCP_CREDENTIALS_PATH = Path.cwd() / "gcp_credentials.json"
 GCP_CONFIG_PATH = Path.cwd() / "gcp_config.yaml"

@@ -266,12 +266,11 @@ if __name__ == "__main__":
     from pathlib import Path
 
     import matplotlib.pyplot as plt
-    from definitions import ROOT_DIR
 
     from h2ox.ai.data_utils import calculate_errors
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
-    from h2ox.scripts.utils import load_zscore_data
+    from h2ox.ai.scripts.utils import load_zscore_data
 
     # parameters for the yaml file
     ENCODE_DOY = True
@@ -303,7 +302,7 @@ if __name__ == "__main__":
         NUM_WORKERS = 1
 
     # load data
-    data_dir = Path(ROOT_DIR / "data")
+    data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)
 
     # # select site
@@ -313,7 +312,7 @@ if __name__ == "__main__":
 
     # get train data
     # train_target = site_target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
-    # train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
     train_forecast = site_forecast.sel(
         initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE)
     )
@@ -326,8 +325,8 @@ if __name__ == "__main__":
     # load dataset
     dd = FcastDataset(
         target=site_target,  # target,
-        history=site_history,  # history,
-        forecast=train_forecast,  # forecast,
+        history=train_history,  # history,
+        forecast=None,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
@@ -351,7 +350,7 @@ if __name__ == "__main__":
 
     # initialise model
     model = initialise_model(
-        train_dl, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, dropout=DROPOUT
+        dd, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, dropout=DROPOUT
     )
 
     # # train
