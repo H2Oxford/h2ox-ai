@@ -2,7 +2,6 @@
 name: "test"
 path_to_runs_folder:
 
-
 # Data Parameters
 seq_len: 60
 future_horizon: 76
