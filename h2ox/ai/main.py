@@ -55,7 +55,7 @@ def main(
     train_forecast = site_forecast.sel(
         initialisation_time=slice(train_start_date, train_end_date)
     )
-    
+
     dd = FcastDataset(
         target=site_target,  # target,
         history=site_history,  # history,
