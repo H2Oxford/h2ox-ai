@@ -52,6 +52,7 @@ def main(
     # load data
     data_dir = Path.cwd() / "data"
     target, history, forecast = load_zscore_data(data_dir)
+    history = history.merge(target)
     # sam_data = load_samantha_updated_data(data_dir)
     # target = sam_data[[target_var]]
     # history = sam_data
@@ -76,9 +77,9 @@ def main(
     )
 
     dd = FcastDataset(
-        target=site_target,  # target,
+        target=train_target,  # target,
         history=train_history,  # history,
-        forecast=site_forecast,  # forecast,
+        forecast=train_forecast,  # forecast,
         encode_doy=encode_doy,
         historical_seq_len=seq_len,
         future_horizon=future_horizon,
