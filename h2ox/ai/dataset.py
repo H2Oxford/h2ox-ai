@@ -41,7 +41,9 @@ class FcastDataset(Dataset):
         self.history = history
         self.forecast = forecast
         self.target = target
-        # self.future = future
+
+        # if self.static is None:
+            # torch.nn.functional.one_hot(torch.arange(ds.sample.size)).numpy()
 
         # ATTRIBUTES
         self.mode = mode
@@ -214,6 +216,7 @@ class FcastDataset(Dataset):
                 # FEATURE ENGINEERING
                 # TODO: current assumption is that encoding_doy FOR ALL DATA (history, forecast, future)
                 history, fcast, future = self._encode_times(history, fcast, future)
+                # history, fcast, future = self._encode_location(history, fcast, future)
 
                 # SELECT FEATURES
                 #  (seq_len, len(history_variables))
@@ -400,6 +403,8 @@ class FcastDataset(Dataset):
             )
 
         return history, fcast, future
+
+    # def _encode_location(self, ) -> Tuple[pd.DataFrame, ...]:
 
     def get_meta(self, idx: int) -> Tuple[str, pd.Timestamp]:
         return self.sample_lookup[idx]
