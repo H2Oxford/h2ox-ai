@@ -12,6 +12,7 @@ from typing import List
 
 import torch
 from torch.utils.data import DataLoader
+from loguru import logger
 
 from h2ox.ai.dataset import FcastDataset
 from h2ox.ai.experiment import ex
@@ -19,6 +20,7 @@ from h2ox.ai.model import initialise_model
 from h2ox.ai.scripts.utils import load_zscore_data
 from h2ox.ai.train import initialise_training, train, train_validation_split
 from h2ox.ai.data_utils import normalize_data
+from h2ox.ai.experiment_utils import plot_losses
 
 
 def _main(
@@ -46,6 +48,7 @@ def _main(
     data_dir = Path.cwd() / "data"
     target, history, forecast = load_zscore_data(data_dir)
     history = history.merge(target)
+    
     # sam_data = load_samantha_updated_data(data_dir)
     # target = sam_data[[target_var]]
     # history = sam_data
@@ -72,7 +75,7 @@ def _main(
 
     dd = FcastDataset(
         target=train_target,  # target,
-        history=train_history,  # history,
+        history=train_history.sel(location=[site]),  # history,
         forecast=train_forecast,  # forecast,
         encode_doy=encode_doy,
         historical_seq_len=seq_len,
@@ -116,9 +119,12 @@ def _main(
         val_dl=val_dl,
     )
 
-    # f, ax = plt.subplots(figsize=(12, 4))
-    # ax.plot(losses)
-
+    # get filepath for experiment dir 
+    filepath = Path(ex.observers[0].dir)
+    if filepath is not None:
+        logger.info(f"Saving losses.png to {filepath}")
+        plot_losses(losses, val_losses, filepath)
+    
     # # test
     return 1
 

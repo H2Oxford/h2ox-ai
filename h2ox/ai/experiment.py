@@ -7,7 +7,7 @@ from loguru import logger
 from sacred import Experiment
 from sacred.observers import FileStorageObserver, GoogleCloudStorageObserver
 
-
+DEBUG = False
 CONFIG_PATH = Path.cwd() / "conf.yaml"
 GCP_CREDENTIALS_PATH = Path.cwd() / "gcp_credentials.json"
 GCP_CONFIG_PATH = Path.cwd() / "gcp_config.yaml"
@@ -37,5 +37,7 @@ else:
 
 ex.add_config(CONFIG_PATH.as_posix())
 logger.info(f"Added {CONFIG_PATH.as_posix()=}")
-print(f"I AM BEING CALLED AGAIN {datetime.now().isoformat()[:19]}")
-print(f"ex.observers = {ex.observers[0].__dict__}")
+
+if DEBUG:
+    print(f"`experiment.py` BEING CALLED AGAIN {datetime.now().isoformat()[:19]}")
+    print(f"ex.observers = {ex.observers[0].__dict__}")
