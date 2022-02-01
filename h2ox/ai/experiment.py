@@ -37,3 +37,5 @@ else:
 
 ex.add_config(CONFIG_PATH.as_posix())
 logger.info(f"Added {CONFIG_PATH.as_posix()=}")
+print(f"I AM BEING CALLED AGAIN {datetime.now().isoformat()[:19]}")
+print(f"ex.observers = {ex.observers[0].__dict__}")
