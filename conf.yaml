@@ -9,7 +9,7 @@ future_horizon: 76
 encode_doy: true
 include_ohe: true
 sites: 
-  - "kabini"                                    # "Hirakud"
+  - "kabini"                                     # "Hirakud"
   - "harangi"
   - "bhadra"
   - "hemavathy"
