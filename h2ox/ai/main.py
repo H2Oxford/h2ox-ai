@@ -123,7 +123,7 @@ def _main(
     filepath = Path(ex.observers[0].dir)
     if filepath is not None:
         logger.info(f"Saving losses.png to {filepath}")
-        plot_losses(losses, val_losses, filepath)
+        plot_losses(filepath=filepath, losses=losses, val_losses=val_losses)
     
     # # test
     return 1
