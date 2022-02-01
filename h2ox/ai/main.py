@@ -36,7 +36,7 @@ def _main(
     history_variables: List[str] = ["tp", "t2m"],
     forecast_variables: List[str] = ["tp", "t2m"],
     encode_doy: bool = True,
-    site: str = "kabini",
+    sites: List[str] = ["kabini"],
     batch_size: int = 32,
     hidden_size: int = 64,
     num_layers: int = 1,
@@ -97,7 +97,7 @@ def _main(
 
     dd = FcastDataset(
         target=train_target,  # target,
-        history=train_history.sel(location=["kabini", "harangi"]),  # history,
+        history=train_history.sel(location=sites),  # history,
         forecast=train_forecast,  # forecast,
         encode_doy=encode_doy,
         historical_seq_len=seq_len,
@@ -152,7 +152,7 @@ def _main(
         # load dataset
         test_dd = FcastDataset(
             target=test_target,  # target,
-            history=test_history,  # history,
+            history=test_history.sel(location=sites),  # history,
             forecast=test_forecast,  # forecast,
             encode_doy=encode_doy,
             historical_seq_len=seq_len,
@@ -205,7 +205,6 @@ def main(
     history_variables: List[str],
     forecast_variables: List[str],
     encode_doy: bool,
-    site: str,
     batch_size: int,
     hidden_size: int,
     num_layers: int,
@@ -214,6 +213,7 @@ def main(
     random_val_split: bool,
     eval_test: bool,
     n_epochs: int,
+    sites: List[str] = ["kabini"],
     normalize: bool = False,
 ) -> int:
     
@@ -228,7 +228,7 @@ def main(
         history_variables=history_variables,
         forecast_variables=forecast_variables,
         encode_doy=encode_doy,
-        site=site,
+        sites=sites,
         batch_size=batch_size,
         hidden_size=hidden_size,
         num_layers=num_layers,
