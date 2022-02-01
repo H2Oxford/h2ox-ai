@@ -1,5 +1,7 @@
+from typing import Optional
 from pathlib import Path
 from datetime import datetime
+from click import Option
 import yaml
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,7 +42,7 @@ def plot_losses(filepath: Path, losses: np.ndarray, val_losses: np.ndarray, val_
     plt.close("all")
 
 
-def plot_horizon_losses(filepath: Path, error: xr.DataArray):
+def plot_horizon_losses(filepath: Path, error: xr.DataArray, identifier: Optional[str] = None):
     # make the forecast horizon plot
     f, ax = plt.subplots(figsize=(12, 6))
     for sample in error.sample.values:
@@ -53,7 +55,7 @@ def plot_horizon_losses(filepath: Path, error: xr.DataArray):
     ax.set_title("Performance over forecast horizon")
     ax.legend()
 
-    f.savefig(filepath / "horizon_losses.png")
+    f.savefig(filepath / "horizon_losses.png" if identifier is None else filepath / f"{identifier}_horizon_losses.png")
     plt.close("all")
 
 
