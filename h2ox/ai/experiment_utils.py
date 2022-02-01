@@ -50,6 +50,7 @@ def plot_horizon_losses(filepath: Path, error: xr.DataArray):
     ax.spines['top'].set_visible(False)
     ax.set_xlabel(error.name if error.name is not None else "Error")
     ax.set_xlabel("Horizon")
+    ax.set_title("Performance over forecast horizon")
     ax.legend()
 
     f.savefig(filepath / "horizon_losses.png")
@@ -61,6 +62,8 @@ def plot_timeseries_over_horizon(filepath: Path, preds: xr.Dataset):
         # make the timeseries plots
         preds_ = preds.sel(initialisation_time=preds["sample"] == sample)
         f, axs = plt.subplots(3, 4, figsize=(6*4, 2*3), tight_layout=True, sharey=True, sharex=True)
+        f.tight_layout(rect=[0, 0.03, 1, 0.95])
+
         random_times = np.random.choice(preds_["initialisation_time"].values, size=12, replace=False)
 
         for ix, time in enumerate(random_times):
@@ -73,5 +76,7 @@ def plot_timeseries_over_horizon(filepath: Path, preds: xr.Dataset):
             ax.set_title(time)
         
         ax.legend()
+
+        f.suptitle(f"{sample} Timeseries")
         f.savefig(filepath / f"{sample}_demo_timeseries.png")
         plt.close("all")
