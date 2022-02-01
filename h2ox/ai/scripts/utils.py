@@ -193,6 +193,15 @@ def original_experiment_splits(df: pd.DataFrame) -> pd.DataFrame:
 #     })
 
 
+def load_samantha_updated_data(data_dir: Path) -> xr.Dataset:
+    data_file = list((data_dir / "raw").glob("samantha_data.csv"))[0]
+    assert data_file.exists()
+    df = pd.read_csv(data_file, parse_dates=True)
+    df["time"] = pd.to_datetime(df["time"])
+    ds = df.set_index(["time", "location"]).to_xarray()
+    return ds
+
+
 if __name__ == "__main__":
     data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)

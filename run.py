@@ -1,3 +1,3 @@
-from h2ox.ai import ex
+from h2ox.ai.main import ex
 
 r = ex.run_commandline()

@@ -15,11 +15,12 @@ from h2ox.ai.data_utils import create_doy
 
 # ASSUMES: "time" is the named dimension/index column
 # ASSUMES: assign doy to all datasets
+# TODO: add one hot encoding of basin id
 class FcastDataset(Dataset):
     def __init__(
         self,
         history: xr.Dataset,
-        forecast: xr.Dataset,
+        forecast: Optional[xr.Dataset],
         target: xr.Dataset,
         historical_seq_len: int = 60,
         future_horizon: int = 76,
@@ -40,7 +41,9 @@ class FcastDataset(Dataset):
         self.history = history
         self.forecast = forecast
         self.target = target
-        # self.future = future
+
+        # if self.static is None:
+            # torch.nn.functional.one_hot(torch.arange(ds.sample.size)).numpy()
 
         # ATTRIBUTES
         self.mode = mode
@@ -64,9 +67,11 @@ class FcastDataset(Dataset):
         # size of arrays
         self.seq_len = historical_seq_len
         self.future_horizon = future_horizon
-        self.forecast_horizon = pd.Timedelta(
-            forecast[forecast_horizon_dim].max().values
-        ).days
+        self.forecast_horizon = (
+            pd.Timedelta(forecast[forecast_horizon_dim].max().values).days
+            if forecast is not None
+            else 0
+        )
         self.target_horizon = self.future_horizon + self.forecast_horizon
         self.times = np.ndarray([])
 
@@ -81,7 +86,7 @@ class FcastDataset(Dataset):
 
         self.forecast_variables = (
             self.forecast_variables + ["doy_sin", "doy_cos"]
-            if encode_doy
+            if (encode_doy) & (self.forecast_variables is not None)
             else self.forecast_variables
         )
 
@@ -152,15 +157,20 @@ class FcastDataset(Dataset):
 
         # TODO: is this definitely the time axis we want to loop through?
         # get the initialisation dates for looping through the data
-        forecast_init_times = self.forecast[self.forecast_initialisation_dim].values
+        # self.forecast[self.forecast_initialisation_dim].values if self.forecast is not None else self.history["time"].values
+        forecast_init_times = self.history["time"].values
 
         # TODO: what happens if the timeseries is not complete? i.e. missing dates
         # TODO: what if all the spatial locations in a dataset are not there?
-        for sample in self.forecast[self.spatial_dim].values:
+        for sample in self.history[self.spatial_dim].values:
 
             # get the data for the sample
             data_h = self.history.sel({self.spatial_dim: sample})
-            data_f = self.forecast.sel({self.spatial_dim: sample})
+            data_f = (
+                self.forecast.sel({self.spatial_dim: sample})
+                if self.forecast is not None
+                else None
+            )
             # TODO: how to include the future data?
             # data_ff = self.future.loc[np.isin(self.future[self.spatial_dim], sample)]
             data_y = self.target.sel({self.spatial_dim: sample})
@@ -206,16 +216,19 @@ class FcastDataset(Dataset):
                 # FEATURE ENGINEERING
                 # TODO: current assumption is that encoding_doy FOR ALL DATA (history, forecast, future)
                 history, fcast, future = self._encode_times(history, fcast, future)
+                # history, fcast, future = self._encode_location(history, fcast, future)
 
                 # SELECT FEATURES
                 #  (seq_len, len(history_variables))
                 history = history[self.history_variables]
                 #  (horizon, len(forecast_variables))
-                fcast = fcast[self.forecast_variables]
+                fcast = fcast[self.forecast_variables] if fcast is not None else None
 
                 # SAVE SIZES (for initialising the model later)
                 self.historical_input_size = history.shape[1]
-                self.forecast_input_size = fcast.shape[1]
+                self.forecast_input_size = (
+                    fcast.shape[1] if self.forecast is not None else 0
+                )
                 self.future_input_size = future.shape[1]
 
                 # SKIP NANS
@@ -225,9 +238,10 @@ class FcastDataset(Dataset):
                         NAN_COUNTER += 1
                         continue
 
-                if np.any(fcast.isnull()):
-                    NAN_COUNTER += 1
-                    continue
+                if self.forecast is not None:
+                    if np.any(fcast.isnull()):
+                        NAN_COUNTER += 1
+                        continue
 
                 if np.any(future.isnull()):
                     NAN_COUNTER += 1
@@ -292,25 +306,40 @@ class FcastDataset(Dataset):
         self,
         data_f: xr.Dataset,
         forecast_init_time: pd.Timestamp,
-    ) -> pd.DataFrame:
-        fcast = data_f.sel({self.forecast_initialisation_dim: forecast_init_time})
-        # Get the data UP TO horizon
-        fcast = fcast.isel({self.forecast_horizon_dim: slice(0, self.forecast_horizon)})
-        # rename self.forecast_horizon_dim -> time
-        forecast_times = (
-            fcast[self.forecast_initialisation_dim] + fcast[self.forecast_horizon_dim]
-        ).values
-        fcast = fcast.rename({self.forecast_horizon_dim: "time"})
-        fcast["time"] = forecast_times
-
-        fcast = (
-            fcast.drop_vars(
-                [self.forecast_initialisation_dim, "valid_time"], errors="ignore"
+    ) -> Optional[pd.DataFrame]:
+        if self.forecast is not None:
+            try:
+                fcast = data_f.sel(
+                    {self.forecast_initialisation_dim: forecast_init_time}
+                )
+            except KeyError:
+                # that date is not available
+                return pd.DataFrame(
+                    {k: np.nan for k in self.forecast_variables},
+                    index=[forecast_init_time],
+                )
+            # Get the data UP TO horizon
+            fcast = fcast.isel(
+                {self.forecast_horizon_dim: slice(0, self.forecast_horizon)}
             )
-            .drop(self.spatial_dim)
-            .to_dataframe()
-        )
-        return fcast
+            # rename self.forecast_horizon_dim -> time
+            forecast_times = (
+                fcast[self.forecast_initialisation_dim]
+                + fcast[self.forecast_horizon_dim]
+            ).values
+            fcast = fcast.rename({self.forecast_horizon_dim: "time"})
+            fcast["time"] = forecast_times
+
+            fcast = (
+                fcast.drop_vars(
+                    [self.forecast_initialisation_dim, "valid_time"], errors="ignore"
+                )
+                .drop(self.spatial_dim)
+                .to_dataframe()
+            )
+            return fcast
+        else:
+            return None
 
     def _get_future_data(
         self,
@@ -358,11 +387,14 @@ class FcastDataset(Dataset):
     def _encode_times(
         self,
         history: xr.Dataset,
-        fcast: xr.Dataset,
+        fcast: Optional[xr.Dataset],
         future: xr.Dataset,
     ) -> Tuple[pd.DataFrame, ...]:
         if self.encode_doy:
-            fcast["doy_sin"], fcast["doy_cos"] = create_doy(list(fcast.index.dayofyear))
+            if fcast is not None:
+                fcast["doy_sin"], fcast["doy_cos"] = create_doy(
+                    list(fcast.index.dayofyear)
+                )
             history["doy_sin"], history["doy_cos"] = create_doy(
                 list(history.index.dayofyear)
             )
@@ -371,6 +403,8 @@ class FcastDataset(Dataset):
             )
 
         return history, fcast, future
+
+    # def _encode_location(self, ) -> Tuple[pd.DataFrame, ...]:
 
     def get_meta(self, idx: int) -> Tuple[str, pd.Timestamp]:
         return self.sample_lookup[idx]
@@ -393,7 +427,7 @@ class FcastDataset(Dataset):
         # (seq_len, n_historical_features)
         x_d = data["x_d"].values
         # (forecast_horizon, n_forecast_features)
-        x_f = data["x_f"].values
+        x_f = data["x_f"].values if data["x_f"] is not None else np.empty([])
         # (future_horizon, n_future_features)
         x_ff = data["x_ff"].values
         # (forecast_horizon + future_horizon, 1)
@@ -430,7 +464,7 @@ def print_instance(dd: FcastDataset, instance: int):
 
 
 if __name__ == "__main__":
-    from h2ox.scripts.utils import load_zscore_data
+    from h2ox.ai.scripts.utils import load_zscore_data
 
     # parameters for the yaml file
     ENCODE_DOY = True
@@ -488,7 +522,7 @@ if __name__ == "__main__":
     dd = FcastDataset(
         target=train_target,  # target,
         history=train_history,  # history,
-        forecast=train_forecast,  # forecast,
+        forecast=None,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
