@@ -39,15 +39,15 @@ def plot_losses(filepath: Path, losses: np.ndarray, val_losses: np.ndarray, val_
     f.savefig(filepath / "losses.png")
 
 
-def plot_horizon_losses(filepath: Path, errors: xr.DataArray):
+def plot_horizon_losses(filepath: Path, error: xr.DataArray):
     # make the forecast horizon plot
     f, ax = plt.subplots(figsize=(12, 6))
-    for sample in errors.sample.values:
-        errors.sel(sample=sample).plot(ax=ax, label=sample)
+    for sample in error.sample.values:
+        error.sel(sample=sample).plot(ax=ax, label=sample)
 
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
-    ax.set_xlabel(errors.name if errors.name is not None else "Error")
+    ax.set_xlabel(error.name if error.name is not None else "Error")
     ax.set_xlabel("Horizon")
     ax.legend()
 
