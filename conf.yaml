@@ -18,9 +18,9 @@ target_var: "volume_bcm"                          # "adjusted_level"
 history_variables: ["tp", "t2m", "volume_bcm"]    # ["ndwi_all", "snow_all", "adjusted_level"]
 forecast_variables: ["tp", "t2m"]
 train_start_date: "2010-01-01"                    # "2010-01-01"
-train_end_date: "2011-01-01"                      # "2018-12-31"
-test_start_date: "2011-01-01"                     # "2019-01-01"
-test_end_date: "2012-01-01"                       # "2022-01-01"
+train_end_date: "2018-01-01"                      # "2018-12-31"
+test_start_date: "2019-01-01"                     # "2019-01-01"
+test_end_date: "2022-01-01"                       # "2022-01-01"
 
 # Model Parameters
 hidden_size: 64
