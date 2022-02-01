@@ -32,4 +32,4 @@ num_workers: 4
 random_val_split: true
 eval_test: true
 batch_size: 100
-n_epochs: 1
+n_epochs: 100
