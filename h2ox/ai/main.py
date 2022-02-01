@@ -179,7 +179,7 @@ def _main(
 
     if filepath is not None:
         logger.info(f"Saving horizon_losses.png to {filepath}")
-        plot_horizon_losses(filepath, error=errors.squeeze()["rmse"].values)
+        plot_horizon_losses(filepath, error=errors.squeeze()["rmse"])
         
         logger.info(f"Saving *_demo_timeseries.png.png to {filepath}")
         plot_timeseries_over_horizon(filepath=filepath, preds=preds)
