@@ -69,10 +69,10 @@ def _main(
             history.sel(time=slice(train_start_date, train_end_date)), static_or_global=True
         )
         train_target, (target_mn, target_std) = normalize_data(
-            target.sel(time=slice(train_start_date, train_end_date)), static_or_global=True
+            target.sel(time=slice(train_start_date, None)), static_or_global=True
         )
         train_forecast, (forecast_mn, forecast_std) = normalize_data(
-            forecast.sel(initialisation_time=slice(train_start_date, train_end_date)),
+            forecast.sel(initialisation_time=slice(train_start_date, None)),
             time_dim="initialisation_time",
             static_or_global=True,
         )
@@ -80,19 +80,19 @@ def _main(
             history.sel(time=slice(test_start_date, test_end_date)), mean_=history_mn, std_=history_std
         )
         test_forecast, _ = normalize_data(
-            forecast.sel(initialisation_time=slice(test_start_date, test_end_date)), mean_=target_mn, std_=target_std
+            forecast.sel(initialisation_time=slice(test_start_date, None)), mean_=target_mn, std_=target_std
         )
         test_target, _ = normalize_data(
-            target.sel(time=slice(test_start_date, test_end_date)), mean_=forecast_mn, std_=forecast_std
+            target.sel(time=slice(test_start_date, None)), mean_=forecast_mn, std_=forecast_std
         )
     else:
         train_history = history.sel(time=slice(train_start_date, train_end_date))
-        train_forecast = forecast.sel(initialisation_time=slice(train_start_date, train_end_date))
-        train_target = target.sel(time=slice(train_start_date, train_end_date))
+        train_forecast = forecast.sel(initialisation_time=slice(train_start_date, None))
+        train_target = target.sel(time=slice(train_start_date, None))
 
         test_history = history.sel(time=slice(test_start_date, test_end_date))
-        test_forecast = forecast.sel(initialisation_time=slice(test_start_date, test_end_date))
-        test_target = target.sel(time=slice(test_start_date, test_end_date))
+        test_forecast = forecast.sel(initialisation_time=slice(test_start_date, None))
+        test_target = target.sel(time=slice(test_start_date, None))
 
 
     dd = FcastDataset(
