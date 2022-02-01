@@ -3,10 +3,17 @@ name: "test"
 path_to_runs_folder:
 
 # Data Parameters
+normalize: false
 seq_len: 60
 future_horizon: 76
 encode_doy: true
-site: "kabini"                                    # "Hirakud"
+sites: 
+  - "kabini"                                    # "Hirakud"
+  - "harangi"
+  - "bhadra"
+  - "hemavathy"
+  - "lower_bhawani"
+  - "krishnaraja_sagar"
 target_var: "volume_bcm"                          # "adjusted_level"
 history_variables: ["tp", "t2m", "volume_bcm"]    # ["ndwi_all", "snow_all", "adjusted_level"]
 forecast_variables: ["tp", "t2m"]
@@ -23,6 +30,6 @@ dropout: 0.4
 # Training Parameters
 num_workers: 1
 random_val_split: true
-eval_test: false
+eval_test: true
 batch_size: 100
-n_epochs: 3
+n_epochs: 1
