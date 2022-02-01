@@ -191,7 +191,7 @@ def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
         eval_data["init_time"].append(forecast_init_times)
 
     print("Converting to xarray object")
-    ds = _eval_data_to_ds(eval_data)
+    ds = _eval_data_to_ds(eval_data, assign_sample=False)
     return ds
 
 
@@ -211,14 +211,13 @@ def _process_metadata(
     return samples, forecast_init_times, target_times
 
 
-def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]]) -> xr.Dataset:
+def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]], assign_sample: bool = False) -> xr.Dataset:
     # get correct shapes for arrays as output
     obs = np.concatenate(eval_data["obs"], axis=0)
     sim = np.concatenate(eval_data["sim"], axis=0)
     sample = np.concatenate(eval_data["sample"], axis=0)
     time = np.concatenate(eval_data["time"], axis=0)
     init_time = np.concatenate(eval_data["init_time"], axis=0)
-
     coords = {
         "initialisation_time": init_time,
         "horizon": np.arange(sim.shape[-1] if sim.ndim > 1 else 1),
@@ -239,7 +238,14 @@ def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]]) -> xr.Datase
         coords=coords,
     )
 
-    return ds
+    # assign "sample" as a dimension to the dataset
+    if assign_sample:
+        df = ds.to_dataframe().reset_index()
+        ds_with_sample_dim = df.set_index(["initialisation_time", "horizon", "sample"]).to_xarray()
+
+        return ds_with_sample_dim
+    else:
+        return ds
 
 
 def train_validation_split(

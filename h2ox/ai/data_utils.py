@@ -67,34 +67,39 @@ def calculate_errors(
     time_dim: str = "initialisation_time",
     model_str: str = "s2s",
 ) -> xr.Dataset:
-    smp = np.unique(preds["sample"])[0]
-    pp = preds.drop("sample")
+    # smp = np.unique(preds["sample"])[0]
+    all_sample_errors = []
+    for smp in np.unique(preds["sample"]):
+        pp = preds.sel(initialisation_time=preds["sample"] == smp).drop("sample")
 
-    # TODO: use another library for these scores, xs dependency pip isntall hangs?
-    rmse = (
-        xs.rmse(pp["obs"], pp["sim"], dim=time_dim)
-        .expand_dims(model=[model_str])
-        .expand_dims(sample=[smp])
-        .expand_dims(variable=[var])
-        .rename("rmse")
-    )
-    pearson = (
-        xs.pearson_r(pp["obs"], pp["sim"], dim=time_dim)
-        .expand_dims(model=[model_str])
-        .expand_dims(sample=[smp])
-        .expand_dims(variable=[var])
-        .rename("pearson-r")
-    )
-    mape = (
-        xs.mape(pp["obs"], pp["sim"], dim=time_dim)
-        .expand_dims(model=[model_str])
-        .expand_dims(sample=[smp])
-        .expand_dims(variable=[var])
-        .rename("mape")
-    )
+        # TODO: use another library for these scores, xs dependency pip isntall hangs?
+        rmse = (
+            xs.rmse(pp["obs"], pp["sim"], dim=time_dim)
+            .expand_dims(model=[model_str])
+            .expand_dims(sample=[smp])
+            .expand_dims(variable=[var])
+            .rename("rmse")
+        )
+        pearson = (
+            xs.pearson_r(pp["obs"], pp["sim"], dim=time_dim)
+            .expand_dims(model=[model_str])
+            .expand_dims(sample=[smp])
+            .expand_dims(variable=[var])
+            .rename("pearson-r")
+        )
+        mape = (
+            xs.mape(pp["obs"], pp["sim"], dim=time_dim)
+            .expand_dims(model=[model_str])
+            .expand_dims(sample=[smp])
+            .expand_dims(variable=[var])
+            .rename("mape")
+        )
 
-    errors = xr.merge([rmse, pearson, mape])
-    return errors
+        errors = xr.merge([rmse, pearson, mape])
+        all_sample_errors.append(errors)
+
+    all_errors = xr.merge(all_sample_errors)
+    return all_errors
 
 
 def normalize_data(

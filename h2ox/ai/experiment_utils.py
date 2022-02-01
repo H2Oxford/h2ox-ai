@@ -3,6 +3,8 @@ from datetime import datetime
 import yaml
 import matplotlib.pyplot as plt
 import numpy as np
+import xarray as xr 
+
 
 def create_model_experiment_folder(
     data_dir: Path, experiment_name: str, add_datetime: bool = False
@@ -35,3 +37,38 @@ def plot_losses(filepath: Path, losses: np.ndarray, val_losses: np.ndarray, val_
     ax.set_xlabel("Loss")
     ax.legend()
     f.savefig(filepath / "losses.png")
+
+
+def plot_horizon_losses(filepath: Path, errors: xr.DataArray):
+    # make the forecast horizon plot
+    f, ax = plt.subplots(figsize=(12, 6))
+    for sample in errors.sample.values:
+        errors.sel(sample=sample).plot(ax=ax, label=sample)
+
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.set_xlabel(errors.name if errors.name is not None else "Error")
+    ax.set_xlabel("Horizon")
+    ax.legend()
+
+    f.savefig(filepath / "horizon_losses.png")
+
+
+def plot_timeseries_over_horizon(filepath: Path, preds: xr.Dataset):
+    for sample in preds.sample:
+        # make the timeseries plots
+        preds_ = preds.sel(initialisation_time=preds["sample"] == sample)
+        f, axs = plt.subplots(3, 4, figsize=(6*4, 2*3), tight_layout=True, sharey=True, sharex=True)
+        random_times = np.random.choice(preds_["initialisation_time"].values, size=12, replace=False)
+
+        for ix, time in enumerate(random_times):
+            ax = axs[np.unravel_index(ix, (3, 4))]
+            ax.plot(preds_.sel(initialisation_time=time)["obs"], label="obs")
+            ax.plot(preds_.sel(initialisation_time=time)["sim"], label="sim")
+            ax.spines['right'].set_visible(False)
+            ax.spines['top'].set_visible(False)
+
+            ax.set_title(time)
+        
+        ax.legend()
+        f.savefig(filepath / f"{sample}_demo_timeseries.png")
