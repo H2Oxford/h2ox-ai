@@ -28,7 +28,7 @@ num_layers: 1
 dropout: 0.4
 
 # Training Parameters
-num_workers: 1
+num_workers: 4
 random_val_split: true
 eval_test: true
 batch_size: 100

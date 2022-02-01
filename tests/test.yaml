@@ -1,0 +1,29 @@
+# Experiment Parameters
+name: "test"
+path_to_runs_folder:
+
+# Data Parameters
+seq_len: 60
+future_horizon: 76
+encode_doy: true
+sites: 
+  - "kabini"                            # "Hirakud"
+target_var: "volume_bcm"      # "adjusted_level"
+history_variables: ["tp", "t2m", "volume_bcm"]    # ["ndwi_all", "snow_all", "adjusted_level"]
+forecast_variables: ["tp", "t2m"]
+train_start_date: "2010-01-01"                     # "2010-01-01"
+train_end_date: "2011-01-01"                        # "2018-12-31"
+test_start_date: "2011-01-01"                      # "2019-01-01"
+test_end_date: "2012-01-01"                        # "2022-01-01"
+
+# Model Parameters
+hidden_size: 64
+num_layers: 1
+dropout: 0.4
+
+# Training Parameters
+num_workers: 1
+random_val_split: true
+eval_test: false
+batch_size: 100
+n_epochs: 3
