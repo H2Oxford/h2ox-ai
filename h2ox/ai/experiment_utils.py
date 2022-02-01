@@ -22,10 +22,13 @@ def dump_config(config: dict, config_path: Path) -> None:
         yaml.dump(config, f, default_flow_style=False)
 
 
-def plot_losses(filepath: Path, losses: np.ndarray, val_losses: np.ndarray):
+def plot_losses(filepath: Path, losses: np.ndarray, val_losses: np.ndarray, val_every: int = 3):
     f, ax = plt.subplots(figsize=(12, 4))
     ax.plot(losses, label="Training")
-    ax.plot(val_losses, label="Validation")
+    # plot validation losses
+    X = np.arange(len(losses))[::val_every][:len(val_losses)]
+    ax.plot(X, val_losses, label="Validation")
+
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.set_xlabel("Epoch")
