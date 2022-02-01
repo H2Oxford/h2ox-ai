@@ -78,7 +78,8 @@ def get_correct_keys(conf: Dict[str, Any], func: Callable) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     # parameters from the yaml file
-    ex.add_config("conf.yaml")
+    # ex.add_config("conf.yaml")
+    ex.add_config("tests/test.yaml")
 
     # get the correct keys from the config file to pass to main()
     config_obj = ex.configurations[0]._conf
