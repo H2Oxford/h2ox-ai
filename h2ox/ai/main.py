@@ -7,6 +7,7 @@ TODO:
 Returns:
     [type]: [description]
 """
+# from h2ox.ai.experiment import initialise_experiment
 from pathlib import Path
 from typing import List
 
@@ -14,7 +15,6 @@ import torch
 from torch.utils.data import DataLoader
 
 from h2ox.ai.dataset import FcastDataset
-from h2ox.ai.experiment import ex
 from h2ox.ai.model import initialise_model
 from h2ox.ai.scripts.utils import load_zscore_data
 from h2ox.ai.train import initialise_training, train, train_validation_split
@@ -52,14 +52,12 @@ def main(
     site_forecast = forecast.sel(location=[site])
 
     # train-test split
-    train_forecast = site_forecast.sel(
-        initialisation_time=slice(train_start_date, train_end_date)
-    )
+    train_history = site_history.sel(time=slice(train_start_date, train_end_date))
 
     dd = FcastDataset(
         target=site_target,  # target,
-        history=site_history,  # history,
-        forecast=train_forecast,  # forecast,
+        history=train_history,  # history,
+        forecast=site_forecast,  # forecast,
         encode_doy=encode_doy,
         historical_seq_len=seq_len,
         future_horizon=future_horizon,
