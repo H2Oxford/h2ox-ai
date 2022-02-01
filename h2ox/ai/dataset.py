@@ -83,7 +83,7 @@ class FcastDataset(Dataset):
 
         self.forecast_variables = (
             self.forecast_variables + ["doy_sin", "doy_cos"]
-            if encode_doy
+            if (encode_doy) & (self.forecast_variables is not None)
             else self.forecast_variables
         )
 
