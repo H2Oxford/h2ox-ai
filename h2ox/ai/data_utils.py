@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 import numpy as np
 import pandas as pd
@@ -67,49 +67,60 @@ def calculate_errors(
     time_dim: str = "initialisation_time",
     model_str: str = "s2s",
 ) -> xr.Dataset:
-    smp = np.unique(preds["sample"])[0]
-    pp = preds.drop("sample")
+    # smp = np.unique(preds["sample"])[0]
+    all_sample_errors = []
+    for smp in np.unique(preds["sample"]):
+        pp = preds.sel(initialisation_time=preds["sample"] == smp).drop("sample")
 
-    # TODO: use another library for these scores, xs dependency pip isntall hangs?
-    rmse = (
-        xs.rmse(pp["obs"], pp["sim"], dim=time_dim)
-        .expand_dims(model=[model_str])
-        .expand_dims(sample=[smp])
-        .expand_dims(variable=[var])
-        .rename("rmse")
-    )
-    pearson = (
-        xs.pearson_r(pp["obs"], pp["sim"], dim=time_dim)
-        .expand_dims(model=[model_str])
-        .expand_dims(sample=[smp])
-        .expand_dims(variable=[var])
-        .rename("pearson-r")
-    )
-    mape = (
-        xs.mape(pp["obs"], pp["sim"], dim=time_dim)
-        .expand_dims(model=[model_str])
-        .expand_dims(sample=[smp])
-        .expand_dims(variable=[var])
-        .rename("mape")
-    )
+        # TODO: use another library for these scores, xs dependency pip isntall hangs?
+        rmse = (
+            xs.rmse(pp["obs"], pp["sim"], dim=time_dim)
+            .expand_dims(model=[model_str])
+            .expand_dims(sample=[smp])
+            .expand_dims(variable=[var])
+            .rename("rmse")
+        )
+        pearson = (
+            xs.pearson_r(pp["obs"], pp["sim"], dim=time_dim)
+            .expand_dims(model=[model_str])
+            .expand_dims(sample=[smp])
+            .expand_dims(variable=[var])
+            .rename("pearson-r")
+        )
+        mape = (
+            xs.mape(pp["obs"], pp["sim"], dim=time_dim)
+            .expand_dims(model=[model_str])
+            .expand_dims(sample=[smp])
+            .expand_dims(variable=[var])
+            .rename("mape")
+        )
 
-    errors = xr.merge([rmse, pearson, mape])
-    return errors
+        errors = xr.merge([rmse, pearson, mape])
+        all_sample_errors.append(errors)
+
+    all_errors = xr.merge(all_sample_errors)
+    return all_errors
 
 
 def normalize_data(
-    ds: xr.Dataset, static: bool = False, time_dim: str = "time"
+    ds: xr.Dataset,
+    static_or_global: bool = False,
+    time_dim: str = "time",
+    mean_: Optional[xr.Dataset] = None,
+    std_: Optional[xr.Dataset] = None,
 ) -> Tuple[xr.Dataset, Tuple[xr.Dataset, xr.Dataset]]:
     """
     Standardizes the data to have mean 0 and standard deviation 1.
     """
     # (Y - mean) / std
-    if not static:
-        mean_ = ds.mean(dim=time_dim)
-        std_ = ds.std(dim=time_dim)
-    else:
-        mean_ = ds.mean()
-        std_ = ds.std()
+    if mean_ is None:
+        assert std_ is None, "mean_ and std_ must both be None or neither None"
+        if not static_or_global:
+            mean_ = ds.mean(dim=time_dim)
+            std_ = ds.std(dim=time_dim)
+        else:
+            mean_ = ds.mean()
+            std_ = ds.std()
 
     norm_ds = (ds - mean_) / std_
 

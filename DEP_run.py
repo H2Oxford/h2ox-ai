@@ -1,5 +1,4 @@
 from pathlib import Path
-from types import MappingProxyType
 from typing import List, Dict, Any, Callable
 
 import torch
@@ -9,104 +8,67 @@ from torch.utils.data import DataLoader
 from h2ox.ai.dataset import FcastDataset
 from h2ox.ai.model import initialise_model
 from h2ox.ai.train import initialise_training, train, train_validation_split
-from h2ox.ai.scripts.utils import load_zscore_data
+from h2ox.ai.scripts.utils import load_zscore_data, load_samantha_updated_data
+from h2ox.ai.data_utils import normalize_data
+from h2ox.ai.main import _main
 
 # instantiate the Experiment class
 ex = Experiment("fcast", interactive=True)
 
-
 # TODO: normalize/unnormalize data
 # TODO: save experiments in reproducible way
-# TODO: test dataloader
-
-
-def initialise_experiment():
-    pass
+# TODO: assert that experiment settings make sense (i.e. variables can be found etc.) def pre_experiment_checks
+# TODO: ensuring config file sets up your data
+# TODO: specify the reservoirs (wrap in a loop for all reservoirs)
+# TODO: uncertainty [stretch goal]
+# TODO: build test dataloaders etc.
 
 
 @ex.main
-def main(
-    seq_len: int = 60,
-    future_horizon: int = 76,
-    target_var: str = "volume_bcm",
-    train_end_date: str = "2018-12-31",
-    train_start_date: str = "2010-01-01",
-    test_start_date: str = "2019-01-01",
-    test_end_date: str = "2022-01-01",
-    history_variables: List[str] = ["tp", "t2m"],
-    forecast_variables: List[str] = ["tp", "t2m"],
-    encode_doy: bool = True,
-    site: str = "kabini",
-    batch_size: int = 32,
-    hidden_size: int = 64,
-    num_layers: int = 1,
-    dropout: float = 0.4,
-    num_workers: int = 1,
-    random_val_split: bool = True,
-    eval_test: bool = True,
-    n_epochs: int = 30,
+def main(    
+    seq_len: int,
+    future_horizon: int,
+    target_var: str,
+    train_end_date: str,
+    train_start_date: str,
+    test_start_date: str,
+    test_end_date: str,
+    history_variables: List[str],
+    forecast_variables: List[str],
+    encode_doy: bool,
+    sites: List[str],
+    batch_size: int,
+    hidden_size: int,
+    num_layers: int,
+    dropout: float,
+    num_workers: int,
+    random_val_split: bool,
+    eval_test: bool,
+    n_epochs: int,
 ):
-    # load data
-    data_dir = Path.cwd() / "data"
-    target, history, forecast = load_zscore_data(data_dir)
-    history = history.merge(target)
-
-    # select site
-    site_target = target.sel(location=[site])
-    site_history = history.sel(location=[site])
-    site_forecast = forecast.sel(location=[site])
-
-    # train-test split
-    train_forecast = site_forecast.sel(
-        initialisation_time=slice(train_start_date, train_end_date)
-    )
-
-    dd = FcastDataset(
-        target=site_target,  # target,
-        history=site_history,  # history,
-        forecast=train_forecast,  # forecast,
-        encode_doy=encode_doy,
-        historical_seq_len=seq_len,
+    out = _main(
+        seq_len=seq_len,
         future_horizon=future_horizon,
         target_var=target_var,
-        mode="train",
+        train_end_date=train_end_date,
+        train_start_date=train_start_date,
+        test_start_date=test_start_date,
+        test_end_date=test_end_date,
         history_variables=history_variables,
         forecast_variables=forecast_variables,
+        encode_doy=encode_doy,
+        sites=sites,
+        batch_size=batch_size,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        dropout=dropout,
+        num_workers=num_workers,
+        random_val_split=random_val_split,
+        eval_test=eval_test,
+        n_epochs=n_epochs,
     )
-
-    # train-validation split
-    train_dd, validation_dd = train_validation_split(
-        dd, random_val_split=random_val_split, validation_proportion=0.8
-    )
-
-    train_dl = DataLoader(
-        train_dd, batch_size=batch_size, shuffle=False, num_workers=num_workers
-    )
-    val_dl = DataLoader(
-        validation_dd, batch_size=batch_size, shuffle=False, num_workers=num_workers
-    )
-
-    # initialise model
-    model = initialise_model(
-        dd, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
-    )
-
-    # # train
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    optimizer, scheduler, loss_fn = initialise_training(
-        model, device=device, loss_rate=1e-3
-    )
-
-    losses, val_losses = train(
-        model,
-        train_dl,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        loss_fn=loss_fn,
-        epochs=n_epochs,
-        val_dl=val_dl,
-    )
-    # plt.plot(losses)
+    return out
+    
 
 
 def get_correct_keys(conf: Dict[str, Any], func: Callable) -> Dict[str, Any]:
@@ -116,12 +78,13 @@ def get_correct_keys(conf: Dict[str, Any], func: Callable) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     # parameters from the yaml file
-    ex.add_config("conf.yaml")
-    
+    # ex.add_config("conf.yaml")
+    ex.add_config("tests/test.yaml")
+
     # get the correct keys from the config file to pass to main()
     config_obj = ex.configurations[0]._conf
     conf = get_correct_keys(config_obj, main)
-    
+
     # assert False
     # ex.run_commandline()
     main(**conf)

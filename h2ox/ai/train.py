@@ -191,7 +191,7 @@ def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
         eval_data["init_time"].append(forecast_init_times)
 
     print("Converting to xarray object")
-    ds = _eval_data_to_ds(eval_data)
+    ds = _eval_data_to_ds(eval_data, assign_sample=False)
     return ds
 
 
@@ -211,14 +211,13 @@ def _process_metadata(
     return samples, forecast_init_times, target_times
 
 
-def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]]) -> xr.Dataset:
+def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]], assign_sample: bool = False) -> xr.Dataset:
     # get correct shapes for arrays as output
     obs = np.concatenate(eval_data["obs"], axis=0)
     sim = np.concatenate(eval_data["sim"], axis=0)
     sample = np.concatenate(eval_data["sample"], axis=0)
     time = np.concatenate(eval_data["time"], axis=0)
     init_time = np.concatenate(eval_data["init_time"], axis=0)
-
     coords = {
         "initialisation_time": init_time,
         "horizon": np.arange(sim.shape[-1] if sim.ndim > 1 else 1),
@@ -239,7 +238,14 @@ def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]]) -> xr.Datase
         coords=coords,
     )
 
-    return ds
+    # assign "sample" as a dimension to the dataset
+    if assign_sample:
+        df = ds.to_dataframe().reset_index()
+        ds_with_sample_dim = df.set_index(["initialisation_time", "horizon", "sample"]).to_xarray()
+
+        return ds_with_sample_dim
+    else:
+        return ds
 
 
 def train_validation_split(
@@ -266,12 +272,11 @@ if __name__ == "__main__":
     from pathlib import Path
 
     import matplotlib.pyplot as plt
-    from definitions import ROOT_DIR
 
     from h2ox.ai.data_utils import calculate_errors
     from h2ox.ai.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
-    from h2ox.scripts.utils import load_zscore_data
+    from h2ox.ai.scripts.utils import load_zscore_data
 
     # parameters for the yaml file
     ENCODE_DOY = True
@@ -303,7 +308,7 @@ if __name__ == "__main__":
         NUM_WORKERS = 1
 
     # load data
-    data_dir = Path(ROOT_DIR / "data")
+    data_dir = Path(Path.cwd() / "data")
     target, history, forecast = load_zscore_data(data_dir)
 
     # # select site
@@ -313,7 +318,7 @@ if __name__ == "__main__":
 
     # get train data
     # train_target = site_target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
-    # train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
+    train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
     train_forecast = site_forecast.sel(
         initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE)
     )
@@ -326,8 +331,8 @@ if __name__ == "__main__":
     # load dataset
     dd = FcastDataset(
         target=site_target,  # target,
-        history=site_history,  # history,
-        forecast=train_forecast,  # forecast,
+        history=train_history,  # history,
+        forecast=None,  # forecast,
         encode_doy=ENCODE_DOY,
         historical_seq_len=SEQ_LEN,
         future_horizon=FUTURE_HORIZON,
@@ -351,7 +356,7 @@ if __name__ == "__main__":
 
     # initialise model
     model = initialise_model(
-        train_dl, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, dropout=DROPOUT
+        dd, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, dropout=DROPOUT
     )
 
     # # train
