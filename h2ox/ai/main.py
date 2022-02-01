@@ -177,13 +177,16 @@ def _main(
     # preds = unnormalize_preds(preds, target_mn, target_std, target=target_var, sample=)
     errors = calculate_errors(preds, target_var, model_str="s2s2s")
 
+    print(errors)
+
     # if how_well_do_we_do_on_train_data:
     #     train_preds = test(model, train_dl)
     #     train_errors = calculate_errors(train_preds, target_var, model_str="s2s2s") 
 
     if filepath is not None:
         logger.info(f"Saving horizon_losses.png to {filepath}")
-        plot_horizon_losses(filepath, error=errors.squeeze()["rmse"])
+        plot_horizon_losses(filepath, error=errors.squeeze()["rmse"], identifier="rmse")
+        plot_horizon_losses(filepath, error=errors.squeeze()["pearson-r"], identifier="pearson-r")
         
         logger.info(f"Saving *_demo_timeseries.png.png to {filepath}")
         plot_timeseries_over_horizon(filepath=filepath, preds=preds)
