@@ -15,6 +15,7 @@ from h2ox.ai.data_utils import create_doy
 
 # ASSUMES: "time" is the named dimension/index column
 # ASSUMES: assign doy to all datasets
+# TODO: add one hot encoding of basin id
 class FcastDataset(Dataset):
     def __init__(
         self,
