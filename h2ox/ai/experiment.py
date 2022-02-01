@@ -18,7 +18,7 @@ ex = Experiment(NAME)
 
 logger.info(f"Experiment created with {NAME=}")
 ex.observers.append(FileStorageObserver("experiments"))
-logger.info("Added Observed at /experiments/")
+logger.info("Added Observed at ./experiments/")
 
 
 if GCP_CREDENTIALS_PATH.exists() and GCP_CONFIG_PATH.exists():
