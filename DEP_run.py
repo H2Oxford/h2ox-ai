@@ -73,7 +73,8 @@ def main(
     )
     train_forecast, (forecast_mn, forecast_std) = normalize_data(
         forecast.sel(initialisation_time=slice(train_start_date, train_end_date)),
-        time_dim="initialisation_time", static_or_global=True
+        time_dim="initialisation_time",
+        static_or_global=True,
     )
 
     dd = FcastDataset(
@@ -121,12 +122,11 @@ def main(
         epochs=n_epochs,
         val_dl=val_dl,
     )
-    
+
     # f, ax = plt.subplots(figsize=(12, 4))
     # ax.plot(losses)
 
-
-    # # test
+    # # test
 
 
 def get_correct_keys(conf: Dict[str, Any], func: Callable) -> Dict[str, Any]:
