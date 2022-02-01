@@ -7,6 +7,7 @@ normalize: false
 seq_len: 60
 future_horizon: 76
 encode_doy: true
+include_ohe: true
 sites: 
   - "kabini"                                    # "Hirakud"
   - "harangi"
@@ -30,6 +31,7 @@ dropout: 0.4
 # Training Parameters
 num_workers: 4
 random_val_split: true
-eval_test: true
+eval_test: false
 batch_size: 100
 n_epochs: 100
+validate_every_n: 3

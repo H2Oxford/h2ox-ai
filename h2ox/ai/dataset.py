@@ -34,6 +34,7 @@ class FcastDataset(Dataset):
         forecast_horizon_dim: str = "forecast_horizon",
         cache: bool = False,
         experiment_dir: Optional[Path] = None,
+        include_ohe: bool = True, 
     ):
         # TODO: check that date column is saved as "time"
         # store data in memory
@@ -41,9 +42,6 @@ class FcastDataset(Dataset):
         self.history = history
         self.forecast = forecast
         self.target = target
-
-        # if self.static is None:
-            # torch.nn.functional.one_hot(torch.arange(ds.sample.size)).numpy()
 
         # ATTRIBUTES
         self.mode = mode
@@ -94,6 +92,19 @@ class FcastDataset(Dataset):
             ["doy_sin", "doy_cos"] if encode_doy else self.future_variables
         )
 
+        self.include_ohe = include_ohe
+        if self.include_ohe:
+            # create lookup for the one_hot_encoding
+            self.categories_ = self.history[self.spatial_dim].values
+            self.ohe = torch.nn.functional.one_hot(torch.arange(self.categories_.size)).numpy()
+            self.categories_lookup = {self.categories_[ix]: self.ohe[ix, :] for ix in np.arange(self.categories_.size)}
+            self.new_column_names = [f"{cat}_ohe" for cat in self.categories_]
+
+            # add new columns to the list of features included 
+            self.history_variables += self.new_column_names
+            self.forecast_variables += self.new_column_names
+            self.future_variables += self.new_column_names
+
         # turn the data into a dictionary for model input
         self.engineer_arrays()
 
@@ -104,12 +115,12 @@ class FcastDataset(Dataset):
         total_str = "FcastDataset\n"
         total_str += "------------\n"
         total_str += "\n"
-        total_str += f"Size: {self.__len__()}\n"
+        total_str += f"N Samples: {self.__len__()}\n"
         total_str += f"Dataset: {self.mode}\n"
         total_str += f"target: {self.target_var}\n"
         total_str += f"history_variables: {self.history_variables}\n"
         total_str += f"forecast_variables: {self.forecast_variables}\n"
-        total_str += "future_variables: [doy_sin, doy_cos]\n"  # NOTE: hardcoded
+        total_str += f"future_variables: {self.forecast_variables}\n"
         total_str += f"seq_len: {self.seq_len}D\n"
         total_str += f"future_horizon: {self.future_horizon}\n"
         total_str += f"forecast_horizon: {self.forecast_horizon}\n"
@@ -124,13 +135,13 @@ class FcastDataset(Dataset):
 
         # time and space dimensions
         tmin = pd.Timestamp(
-            self.forecast[self.forecast_initialisation_dim].min().values
+            self.history["time"].values.min()
         )
         tmax = pd.Timestamp(
-            self.forecast[self.forecast_initialisation_dim].max().values
+            self.history["time"].values.max()
         )
         total_str += f"PERIOD: {tmin}: {tmax}\n"
-        total_str += f"LOCATIONS: {self.forecast[self.spatial_dim].values}\n"
+        total_str += f"LOCATIONS: {self.history[self.spatial_dim].values}\n"
 
         return total_str
 
@@ -216,7 +227,8 @@ class FcastDataset(Dataset):
                 # FEATURE ENGINEERING
                 # TODO: current assumption is that encoding_doy FOR ALL DATA (history, forecast, future)
                 history, fcast, future = self._encode_times(history, fcast, future)
-                # history, fcast, future = self._encode_location(history, fcast, future)
+                if self.include_ohe:
+                    history, fcast, future = self._encode_location(history, fcast, future, sample=sample)
 
                 # SELECT FEATURES
                 #  (seq_len, len(history_variables))
@@ -404,7 +416,38 @@ class FcastDataset(Dataset):
 
         return history, fcast, future
 
-    # def _encode_location(self, ) -> Tuple[pd.DataFrame, ...]:
+    @staticmethod
+    def _merge_dataframe_of_one_hot_encoded_data(
+        array: np.ndarray,
+        df: pd.DataFrame,
+        new_column_names: List[str],
+    ) -> pd.DataFrame:
+        # repeat `array` for each row in the dataframe
+        ohe = pd.DataFrame(
+            np.tile(array, df.shape[0]).reshape(df.shape[0], -1),
+            index=df.index,
+            columns=new_column_names
+        )
+        # append new ohe columns as features to dataframes
+        df = df.join(ohe)       
+
+        return df
+
+    def _encode_location(
+        self, 
+        history: xr.Dataset,
+        fcast: Optional[xr.Dataset],
+        future: xr.Dataset,
+        sample: str
+    ) -> Tuple[pd.DataFrame, ...]:
+        array = self.categories_lookup[sample]
+        
+        # add new columns to dataframes of features
+        history = self._merge_dataframe_of_one_hot_encoded_data(array, history, self.new_column_names)
+        fcast = self._merge_dataframe_of_one_hot_encoded_data(array, fcast, self.new_column_names)
+        future = self._merge_dataframe_of_one_hot_encoded_data(array, future, self.new_column_names)
+
+        return history, fcast, future 
 
     def get_meta(self, idx: int) -> Tuple[str, pd.Timestamp]:
         return self.sample_lookup[idx]

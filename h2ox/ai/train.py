@@ -51,7 +51,10 @@ def train(
     val_dl: Optional[DataLoader] = None,
     validate_every_n: int = 3,
     catch_nans: bool = False,
+    cache_model: bool = False,
 ) -> Tuple[List[float], ...]:
+    # TODO (tl): add early stopping
+    # TODO (tl): save model checkpoints & optimizer checkpoints
     # move onto GPU (if exists)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -125,6 +128,11 @@ def train(
                 val_loss = validate(model, val_dl, loss_fn)
                 print(f"-- Validation Loss: {val_loss:.3f} --")
                 all_val_losses.append(val_loss)
+        
+        if cache_model:
+            # Save model checkpoint
+            # save optimizer checkpoint
+            pass
 
     return (all_losses, all_val_losses)
 

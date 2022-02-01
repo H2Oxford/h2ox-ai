@@ -46,21 +46,17 @@ def _main(
     eval_test: bool = True,
     n_epochs: int = 30,
     normalize: bool = False,
+    validate_every_n: int = 3,
+    include_ohe: bool = True,
 ) -> int:
     # load data
     data_dir = Path.cwd() / "data"
     target, history, forecast = load_zscore_data(data_dir)
     history = history.merge(target)
-    
     # sam_data = load_samantha_updated_data(data_dir)
     # target = sam_data[[target_var]]
     # history = sam_data
     # forecast = None
-
-    # select site
-    # site_target = target.sel(location=[site])
-    # site_history = history.sel(location=[site])
-    # site_forecast = forecast.sel(location=[site]) if forecast is not None else None
 
     # train-test split
     # normalize data
@@ -94,7 +90,6 @@ def _main(
         test_forecast = forecast.sel(initialisation_time=slice(test_start_date, None))
         test_target = target.sel(time=slice(test_start_date, None))
 
-
     dd = FcastDataset(
         target=train_target,  # target,
         history=train_history.sel(location=sites),  # history,
@@ -106,7 +101,10 @@ def _main(
         mode="train",
         history_variables=history_variables,
         forecast_variables=forecast_variables,
+        include_ohe=include_ohe,
     )
+
+    print(dd)
 
     # train-validation split
     train_dd, validation_dd = train_validation_split(
@@ -139,6 +137,7 @@ def _main(
         loss_fn=loss_fn,
         epochs=n_epochs,
         val_dl=val_dl,
+        validate_every_n=validate_every_n,
     )
 
     # get filepath for experiment dir 
@@ -161,6 +160,7 @@ def _main(
             mode="test",
             history_variables=history_variables,
             forecast_variables=forecast_variables,
+            include_ohe=include_ohe,
         )
 
         test_dl = DataLoader(
@@ -177,6 +177,10 @@ def _main(
     # preds = unnormalize_preds(preds, target_mn, target_std, target=target_var, sample=)
     errors = calculate_errors(preds, target_var, model_str="s2s2s")
 
+    # if how_well_do_we_do_on_train_data:
+    #     train_preds = test(model, train_dl)
+    #     train_errors = calculate_errors(train_preds, target_var, model_str="s2s2s") 
+
     if filepath is not None:
         logger.info(f"Saving horizon_losses.png to {filepath}")
         plot_horizon_losses(filepath, error=errors.squeeze()["rmse"])
@@ -189,6 +193,8 @@ def _main(
 
         logger.info(f"Saving preds.nc to {filepath}")
         preds.to_netcdf(filepath / "preds.nc")
+    
+    # TODO: create a summary table and save to .tex file ?
 
     return 1
 
