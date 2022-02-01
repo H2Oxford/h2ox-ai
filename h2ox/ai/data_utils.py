@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 import numpy as np
 import pandas as pd
@@ -98,18 +98,24 @@ def calculate_errors(
 
 
 def normalize_data(
-    ds: xr.Dataset, static: bool = False, time_dim: str = "time"
+    ds: xr.Dataset,
+    static_or_global: bool = False,
+    time_dim: str = "time",
+    mean_: Optional[xr.Dataset] = None,
+    std_: Optional[xr.Dataset] = None,
 ) -> Tuple[xr.Dataset, Tuple[xr.Dataset, xr.Dataset]]:
     """
     Standardizes the data to have mean 0 and standard deviation 1.
     """
     # (Y - mean) / std
-    if not static:
-        mean_ = ds.mean(dim=time_dim)
-        std_ = ds.std(dim=time_dim)
-    else:
-        mean_ = ds.mean()
-        std_ = ds.std()
+    if mean_ is None:
+        assert std_ is None, "mean_ and std_ must both be None or neither None"
+        if not static_or_global:
+            mean_ = ds.mean(dim=time_dim)
+            std_ = ds.std(dim=time_dim)
+        else:
+            mean_ = ds.mean()
+            std_ = ds.std()
 
     norm_ds = (ds - mean_) / std_
 
