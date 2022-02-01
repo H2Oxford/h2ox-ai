@@ -13,14 +13,16 @@ from typing import List
 import torch
 from torch.utils.data import DataLoader
 from loguru import logger
+import xarray as xr
 
 from h2ox.ai.dataset import FcastDataset
 from h2ox.ai.experiment import ex
 from h2ox.ai.model import initialise_model
 from h2ox.ai.scripts.utils import load_zscore_data
-from h2ox.ai.train import initialise_training, train, train_validation_split
-from h2ox.ai.data_utils import normalize_data
-from h2ox.ai.experiment_utils import plot_losses
+from h2ox.ai.train import initialise_training, train, train_validation_split, test
+from h2ox.ai.data_utils import normalize_data, unnormalize_preds
+from h2ox.ai.experiment_utils import plot_losses, plot_horizon_losses, plot_timeseries_over_horizon
+from h2ox.ai.data_utils import calculate_errors
 
 
 def _main(
@@ -43,6 +45,7 @@ def _main(
     random_val_split: bool = True,
     eval_test: bool = True,
     n_epochs: int = 30,
+    normalize: bool = False,
 ) -> int:
     # load data
     data_dir = Path.cwd() / "data"
@@ -61,21 +64,40 @@ def _main(
 
     # train-test split
     # normalize data
-    train_history, (history_mn, history_std) = normalize_data(
-        history.sel(time=slice(train_start_date, train_end_date)), static_or_global=True
-    )
-    train_target, (target_mn, target_std) = normalize_data(
-        target.sel(time=slice(train_start_date, train_end_date)), static_or_global=True
-    )
-    train_forecast, (forecast_mn, forecast_std) = normalize_data(
-        forecast.sel(initialisation_time=slice(train_start_date, train_end_date)),
-        time_dim="initialisation_time",
-        static_or_global=True,
-    )
+    if normalize:
+        train_history, (history_mn, history_std) = normalize_data(
+            history.sel(time=slice(train_start_date, train_end_date)), static_or_global=True
+        )
+        train_target, (target_mn, target_std) = normalize_data(
+            target.sel(time=slice(train_start_date, train_end_date)), static_or_global=True
+        )
+        train_forecast, (forecast_mn, forecast_std) = normalize_data(
+            forecast.sel(initialisation_time=slice(train_start_date, train_end_date)),
+            time_dim="initialisation_time",
+            static_or_global=True,
+        )
+        test_history, _ = normalize_data(
+            history.sel(time=slice(test_start_date, test_end_date)), mean_=history_mn, std_=history_std
+        )
+        test_forecast, _ = normalize_data(
+            forecast.sel(initialisation_time=slice(test_start_date, test_end_date)), mean_=target_mn, std_=target_std
+        )
+        test_target, _ = normalize_data(
+            target.sel(time=slice(test_start_date, test_end_date)), mean_=forecast_mn, std_=forecast_std
+        )
+    else:
+        train_history = history.sel(time=slice(train_start_date, train_end_date))
+        train_forecast = forecast.sel(initialisation_time=slice(train_start_date, train_end_date))
+        train_target = target.sel(time=slice(train_start_date, train_end_date))
+
+        test_history = history.sel(time=slice(test_start_date, test_end_date))
+        test_forecast = forecast.sel(initialisation_time=slice(test_start_date, test_end_date))
+        test_target = target.sel(time=slice(test_start_date, test_end_date))
+
 
     dd = FcastDataset(
         target=train_target,  # target,
-        history=train_history.sel(location=[site]),  # history,
+        history=train_history.sel(location=["kabini", "harangi"]),  # history,
         forecast=train_forecast,  # forecast,
         encode_doy=encode_doy,
         historical_seq_len=seq_len,
@@ -120,12 +142,54 @@ def _main(
     )
 
     # get filepath for experiment dir 
-    filepath = Path(ex.observers[0].dir)
+    filepath = Path(ex.observers[0].dir) if ex.observers[0].dir is not None else None
     if filepath is not None:
         logger.info(f"Saving losses.png to {filepath}")
         plot_losses(filepath=filepath, losses=losses, val_losses=val_losses)
     
     # # test
+    if eval_test:
+        # load dataset
+        test_dd = FcastDataset(
+            target=test_target,  # target,
+            history=test_history,  # history,
+            forecast=test_forecast,  # forecast,
+            encode_doy=encode_doy,
+            historical_seq_len=seq_len,
+            future_horizon=future_horizon,
+            target_var=target_var,
+            mode="test",
+            history_variables=history_variables,
+            forecast_variables=forecast_variables,
+        )
+
+        test_dl = DataLoader(
+            test_dd, 
+            batch_size=batch_size, 
+            shuffle=False, 
+            num_workers=num_workers
+        )
+
+    else:
+        test_dl = val_dl
+
+    preds = test(model, test_dl)
+    # preds = unnormalize_preds(preds, target_mn, target_std, target=target_var, sample=)
+    errors = calculate_errors(preds, target_var, model_str="s2s2s")
+
+    if filepath is not None:
+        logger.info(f"Saving horizon_losses.png to {filepath}")
+        plot_horizon_losses(filepath, error=errors.squeeze()["rmse"].values)
+        
+        logger.info(f"Saving *_demo_timeseries.png.png to {filepath}")
+        plot_timeseries_over_horizon(filepath=filepath, preds=preds)
+
+        logger.info(f"Saving errors.nc to {filepath}")
+        errors.to_netcdf(filepath / "errors.nc")
+
+        logger.info(f"Saving preds.nc to {filepath}")
+        preds.to_netcdf(filepath / "preds.nc")
+
     return 1
 
 
@@ -150,6 +214,7 @@ def main(
     random_val_split: bool,
     eval_test: bool,
     n_epochs: int,
+    normalize: bool = False,
 ) -> int:
     
     out = _main(
@@ -172,5 +237,6 @@ def main(
         random_val_split=random_val_split,
         eval_test=eval_test,
         n_epochs=n_epochs,
+        normalize=normalize,
     )
     return out
