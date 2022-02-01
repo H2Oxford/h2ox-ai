@@ -37,6 +37,7 @@ def plot_losses(filepath: Path, losses: np.ndarray, val_losses: np.ndarray, val_
     ax.set_xlabel("Loss")
     ax.legend()
     f.savefig(filepath / "losses.png")
+    plt.close("all")
 
 
 def plot_horizon_losses(filepath: Path, error: xr.DataArray):
@@ -52,10 +53,11 @@ def plot_horizon_losses(filepath: Path, error: xr.DataArray):
     ax.legend()
 
     f.savefig(filepath / "horizon_losses.png")
+    plt.close("all")
 
 
 def plot_timeseries_over_horizon(filepath: Path, preds: xr.Dataset):
-    for sample in preds.sample:
+    for sample in np.unique(preds.sample.values):
         # make the timeseries plots
         preds_ = preds.sel(initialisation_time=preds["sample"] == sample)
         f, axs = plt.subplots(3, 4, figsize=(6*4, 2*3), tight_layout=True, sharey=True, sharex=True)
@@ -72,3 +74,4 @@ def plot_timeseries_over_horizon(filepath: Path, preds: xr.Dataset):
         
         ax.legend()
         f.savefig(filepath / f"{sample}_demo_timeseries.png")
+        plt.close("all")
