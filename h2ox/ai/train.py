@@ -55,8 +55,8 @@ def _save_weights_and_optimizer(
         logger.info(f"Saving optimizer_state_epoch{epoch:03d}.pt to {run_dir.as_posix()}")
         optimizer_path = run_dir / f"optimizer_state_epoch{epoch:03d}.pt"
         torch.save(optimizer.state_dict(), str(optimizer_path))
-    
-    logger.info(f"No run_dir found in experiment observers. Not saving model or optimizer state.")
+    else:
+        logger.info(f"No run_dir found in experiment observers. Not saving model or optimizer state.")
 
 
 def train(
