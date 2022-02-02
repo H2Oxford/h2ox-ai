@@ -2,14 +2,42 @@
 name: "test"
 path_to_runs_folder:
 
+# Data Units
+data_units:
+  test_csv_sam_data:
+    class: h2ox.ai.dataset.data_units.CSVDataUnit
+    data_path: ./data/raw/samantha_data.csv
+    variable_keys: [ndwi_at, ndwi_up]
+    sites: [Hirakud] #
+    date_col: time
+    site_col: location
+  test_csv_pf6:
+    class: h2ox.ai.dataset.data_units.CSVDataUnit
+    data_path: ./data/raw/ndwi_pf6_daily_modis.csv
+    variable_keys: [mean]
+    sites: [452100]
+    date_col: date
+    site_col: PFAF_ID
+  test_spatial_zarr:
+    class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+    variable_keys: [t2m]
+    gdf_path: ./data/GRAND_pilot_reservoirs.gpkg
+    gdf_site_col: GRAND_ID
+    sites: [4857]
+    z_address: gs://oxeo-era5/build
+    steps: null
+    zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+    lat_col: latitude
+    lon_col: longitude
+
+
 # Data Parameters
 seq_len: 60
 future_horizon: 76
 encode_doy: true
 include_ohe: true
-sites: 
-  - "kabini"                            # "Hirakud"
-  - "bhadra"
+sites:
+  - "hirakud"                            # "Hirakud"
 target_var: "volume_bcm"      # "adjusted_level"
 history_variables: ["tp", "t2m", "volume_bcm"]    # ["ndwi_all", "snow_all", "adjusted_level"]
 forecast_variables: ["tp", "t2m"]
