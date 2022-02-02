@@ -50,7 +50,7 @@ def plot_horizon_losses(
     # make the forecast horizon plot
     f, ax = plt.subplots(figsize=(12, 6))
     for sample in error.sample.values:
-        error.sel(sample=sample).plot(ax=ax, label=sample)
+        error.sel(sample=sample).squeeze().plot(ax=ax, label=sample)
 
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)

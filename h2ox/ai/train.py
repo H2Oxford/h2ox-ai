@@ -67,6 +67,27 @@ def _save_weights_and_optimizer(
         )
 
 
+def load_model_optimizer_from_checkpoint(
+    run_dir: Path,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    weight_path: Optional[Path] = None,
+    device: str = "cpu",
+) -> nn.Module:
+    if weight_path is None:
+        assert (
+            run_dir is not None
+        ), "If weight_path not provided, run_dir must be provided"
+        weight_path = [x for x in sorted(list(run_dir.glob("model_epoch*.pt")))][-1]
+
+    epoch = weight_path.name[-6:-3]
+    optimizer_path = run_dir / f"optimizer_state_epoch{epoch}.pt"
+
+    logger.info(f"Loading model & optimizer from Epoch: {epoch}")
+    model.load_state_dict(torch.load(weight_path, map_location=device))
+    optimizer.load_state_dict(torch.load(str(optimizer_path), map_location=device))
+
+
 def train(
     model: nn.Module,
     train_dl: DataLoader,
@@ -156,7 +177,6 @@ def train(
                 print(f"-- Validation Loss: {val_loss:.3f} --")
                 all_val_losses.append(val_loss)
 
-        
         # cache_model
         _save_weights_and_optimizer(
             epoch=epoch,
@@ -164,7 +184,6 @@ def train(
             model=model,
             optimizer=optimizer,
         )
-
 
     return (all_losses, all_val_losses)
 
