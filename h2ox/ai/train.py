@@ -323,7 +323,7 @@ def train_validation_split(
             train_dataset, [train_size, validation_size]
         )
     else:
-        # SEQUENTIAL = train from 1:N; validation from N:-1 
+        # SEQUENTIAL = train from 1:N; validation from N:-1
         # (NOTE: INDEXED BY TIME NOT SPACE - first sort the index_df by time)
         index_df = train_dataset._get_meta_dataframe()
         index_df = index_df.sort_values("initialisation_time")
