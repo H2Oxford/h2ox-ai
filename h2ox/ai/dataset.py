@@ -139,10 +139,11 @@ class FcastDataset(Dataset):
         total_str += f'y shape:   {data_eg["y"].shape}\n'
 
         # time and space dimensions
-        tmin = pd.Timestamp(self.history["time"].values.min())
-        tmax = pd.Timestamp(self.history["time"].values.max())
+        meta_df = self._get_meta_dataframe()
+        tmin = pd.Timestamp(meta_df["initialisation_time"].min())
+        tmax = pd.Timestamp(meta_df["initialisation_time"].max())
         total_str += f"PERIOD: {tmin}: {tmax}\n"
-        total_str += f"LOCATIONS: {self.history[self.spatial_dim].values}\n"
+        total_str += f"LOCATIONS: {meta_df['location'].unique()}\n"
 
         return total_str
 
