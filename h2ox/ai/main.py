@@ -196,9 +196,7 @@ def _main(
     if filepath is not None:
         logger.info(f"Saving horizon_losses.png to {filepath}")
         plot_horizon_losses(filepath, error=errors["rmse"], identifier="rmse")
-        plot_horizon_losses(
-            filepath, error=errors["pearson-r"], identifier="pearson-r"
-        )
+        plot_horizon_losses(filepath, error=errors["pearson-r"], identifier="pearson-r")
 
         logger.info(f"Saving *_demo_timeseries.png.png to {filepath}")
         plot_timeseries_over_horizon(filepath=filepath, preds=preds)
