@@ -42,7 +42,7 @@ def initialise_training(
 def _save_weights_and_optimizer(
     epoch: int, 
     experiment: Experiment, 
-    model: torch.Module, 
+    model: nn.Module, 
     optimizer: torch.optim.Optimizer,
 ):
     run_dir = Path(experiment.observers[0].dir) if experiment.observers[0].dir is not None else None
