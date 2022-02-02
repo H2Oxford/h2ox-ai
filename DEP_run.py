@@ -25,7 +25,7 @@ ex = Experiment("fcast", interactive=True)
 
 
 @ex.main
-def main(    
+def main(
     seq_len: int,
     future_horizon: int,
     target_var: str,
@@ -68,7 +68,6 @@ def main(
         n_epochs=n_epochs,
     )
     return out
-    
 
 
 def get_correct_keys(conf: Dict[str, Any], func: Callable) -> Dict[str, Any]:

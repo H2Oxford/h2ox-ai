@@ -1,7 +1,7 @@
 import socket
 from collections import defaultdict
 from typing import Any, DefaultDict, Dict, List, Optional, Tuple
-
+from pathlib import Path
 import numpy as np
 import torch
 import xarray as xr
@@ -40,23 +40,31 @@ def initialise_training(
 
 
 def _save_weights_and_optimizer(
-    epoch: int, 
-    experiment: Experiment, 
-    model: nn.Module, 
+    epoch: int,
+    experiment: Experiment,
+    model: nn.Module,
     optimizer: torch.optim.Optimizer,
 ):
-    run_dir = Path(experiment.observers[0].dir) if experiment.observers[0].dir is not None else None
+    run_dir = (
+        Path(experiment.observers[0].dir)
+        if experiment.observers[0].dir is not None
+        else None
+    )
 
     if run_dir is not None:
         logger.info(f"Saving model_epoch{epoch:03d}.pt to {run_dir.as_posix()}")
         weight_path = run_dir / f"model_epoch{epoch:03d}.pt"
         torch.save(model.state_dict(), str(weight_path))
 
-        logger.info(f"Saving optimizer_state_epoch{epoch:03d}.pt to {run_dir.as_posix()}")
+        logger.info(
+            f"Saving optimizer_state_epoch{epoch:03d}.pt to {run_dir.as_posix()}"
+        )
         optimizer_path = run_dir / f"optimizer_state_epoch{epoch:03d}.pt"
         torch.save(optimizer.state_dict(), str(optimizer_path))
     else:
-        logger.info(f"No run_dir found in experiment observers. Not saving model or optimizer state.")
+        logger.info(
+            f"No run_dir found in experiment observers. Not saving model or optimizer state."
+        )
 
 
 def train(
@@ -70,7 +78,7 @@ def train(
     validate_every_n: int = 3,
     catch_nans: bool = False,
     cache_model: bool = False,
-    experiment: Optional[Experiment] = None
+    experiment: Optional[Experiment] = None,
 ) -> Tuple[List[float], ...]:
     # TODO (tl): add early stopping
     # TODO (tl): save model checkpoints & optimizer checkpoints
@@ -154,7 +162,7 @@ def train(
                 val_loss = validate(model, val_dl, loss_fn)
                 print(f"-- Validation Loss: {val_loss:.3f} --")
                 all_val_losses.append(val_loss)
-        
+
         if cache_model:
             # Save model checkpoint
             # save optimizer checkpoint
@@ -245,7 +253,9 @@ def _process_metadata(
     return samples, forecast_init_times, target_times
 
 
-def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]], assign_sample: bool = False) -> xr.Dataset:
+def _eval_data_to_ds(
+    eval_data: DefaultDict[str, List[np.ndarray]], assign_sample: bool = False
+) -> xr.Dataset:
     # get correct shapes for arrays as output
     obs = np.concatenate(eval_data["obs"], axis=0)
     sim = np.concatenate(eval_data["sim"], axis=0)
@@ -275,7 +285,9 @@ def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]], assign_sampl
     # assign "sample" as a dimension to the dataset
     if assign_sample:
         df = ds.to_dataframe().reset_index()
-        ds_with_sample_dim = df.set_index(["initialisation_time", "horizon", "sample"]).to_xarray()
+        ds_with_sample_dim = df.set_index(
+            ["initialisation_time", "horizon", "sample"]
+        ).to_xarray()
 
         return ds_with_sample_dim
     else:
