@@ -19,7 +19,7 @@ target_var: "volume_bcm"                          # "adjusted_level"
 history_variables: ["tp", "t2m", "volume_bcm"]    # ["ndwi_all", "snow_all", "adjusted_level"]
 forecast_variables: ["tp", "t2m"]
 train_start_date: "2010-01-01"                    # "2010-01-01"
-train_end_date: "2018-01-01"                      # "2018-12-31"
+train_end_date: "2018-06-01"                      # "2018-12-31"
 test_start_date: "2019-01-01"                     # "2019-01-01"
 test_end_date: "2022-01-01"                       # "2022-01-01"
 
@@ -30,7 +30,7 @@ dropout: 0.4
 
 # Training Parameters
 num_workers: 4
-random_val_split: true
+random_val_split: false 
 eval_test: false
 batch_size: 100
 n_epochs: 100
