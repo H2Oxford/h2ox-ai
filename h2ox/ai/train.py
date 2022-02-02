@@ -1,16 +1,18 @@
 import socket
 from collections import defaultdict
 from typing import Any, DefaultDict, Dict, List, Optional, Tuple
-
+from pathlib import Path
 import numpy as np
 import torch
 import xarray as xr
 from torch import nn, optim
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
+from loguru import logger
 
 from h2ox.ai.dataset import FcastDataset
 from h2ox.ai.train_utils import get_exponential_weights
+from sacred import Experiment
 
 
 def weighted_mse_loss(
@@ -37,8 +39,53 @@ def initialise_training(
     return optimizer, scheduler, loss_fn
 
 
-def _dump_model():
-    pass
+def _save_weights_and_optimizer(
+    epoch: int,
+    experiment: Experiment,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+):
+    run_dir = (
+        Path(experiment.observers[0].dir)
+        if experiment.observers[0].dir is not None
+        else None
+    )
+
+    if run_dir is not None:
+        logger.info(f"Saving model_epoch{epoch:03d}.pt to {run_dir.as_posix()}")
+        weight_path = run_dir / f"model_epoch{epoch:03d}.pt"
+        torch.save(model.state_dict(), str(weight_path))
+
+        logger.info(
+            f"Saving optimizer_state_epoch{epoch:03d}.pt to {run_dir.as_posix()}"
+        )
+        optimizer_path = run_dir / f"optimizer_state_epoch{epoch:03d}.pt"
+        torch.save(optimizer.state_dict(), str(optimizer_path))
+    else:
+        logger.info(
+            f"No run_dir found in experiment observers. Not saving model or optimizer state."
+        )
+
+
+def load_model_optimizer_from_checkpoint(
+    run_dir: Path,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    weight_path: Optional[Path] = None,
+    device: str = "cpu",
+) -> nn.Module:
+    if weight_path is None:
+        assert (
+            run_dir is not None
+        ), "If weight_path not provided, run_dir must be provided"
+        weight_path = [x for x in sorted(list(run_dir.glob("model_epoch*.pt")))][-1]
+
+    epoch = weight_path.name[-6:-3]
+    optimizer_path = run_dir / f"optimizer_state_epoch{epoch}.pt"
+
+    logger.info(f"Loading model & optimizer from Epoch: {epoch}")
+    model.load_state_dict(torch.load(weight_path, map_location=device))
+    optimizer.load_state_dict(torch.load(str(optimizer_path), map_location=device))
 
 
 def train(
@@ -51,7 +98,11 @@ def train(
     val_dl: Optional[DataLoader] = None,
     validate_every_n: int = 3,
     catch_nans: bool = False,
+    cache_model: bool = False,
+    experiment: Optional[Experiment] = None,
 ) -> Tuple[List[float], ...]:
+    # TODO (tl): add early stopping
+    # TODO (tl): save model checkpoints & optimizer checkpoints
     # move onto GPU (if exists)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -125,6 +176,14 @@ def train(
                 val_loss = validate(model, val_dl, loss_fn)
                 print(f"-- Validation Loss: {val_loss:.3f} --")
                 all_val_losses.append(val_loss)
+
+        # cache_model
+        _save_weights_and_optimizer(
+            epoch=epoch,
+            experiment=experiment,
+            model=model,
+            optimizer=optimizer,
+        )
 
     return (all_losses, all_val_losses)
 
@@ -211,7 +270,9 @@ def _process_metadata(
     return samples, forecast_init_times, target_times
 
 
-def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]], assign_sample: bool = False) -> xr.Dataset:
+def _eval_data_to_ds(
+    eval_data: DefaultDict[str, List[np.ndarray]], assign_sample: bool = False
+) -> xr.Dataset:
     # get correct shapes for arrays as output
     obs = np.concatenate(eval_data["obs"], axis=0)
     sim = np.concatenate(eval_data["sim"], axis=0)
@@ -241,7 +302,9 @@ def _eval_data_to_ds(eval_data: DefaultDict[str, List[np.ndarray]], assign_sampl
     # assign "sample" as a dimension to the dataset
     if assign_sample:
         df = ds.to_dataframe().reset_index()
-        ds_with_sample_dim = df.set_index(["initialisation_time", "horizon", "sample"]).to_xarray()
+        ds_with_sample_dim = df.set_index(
+            ["initialisation_time", "horizon", "sample"]
+        ).to_xarray()
 
         return ds_with_sample_dim
     else:
@@ -260,10 +323,15 @@ def train_validation_split(
             train_dataset, [train_size, validation_size]
         )
     else:
-        # SEQUENTIAL
-        # train from 1:N; validation from N:-1
-        train_dd = Subset(train_dataset, np.arange(train_size))
-        validation_dd = Subset(train_dataset, np.arange(train_size, len(train_dataset)))
+        # SEQUENTIAL = train from 1:N; validation from N:-1
+        # (NOTE: INDEXED BY TIME NOT SPACE - first sort the index_df by time)
+        index_df = train_dataset._get_meta_dataframe()
+        index_df = index_df.sort_values("initialisation_time")
+        train_indexes = index_df.index[:train_size]
+        val_indexes = index_df.index[-validation_size:]
+
+        train_dd = Subset(train_dataset, train_indexes)
+        validation_dd = Subset(train_dataset, val_indexes)
 
     return train_dd, validation_dd
 
@@ -296,7 +364,7 @@ if __name__ == "__main__":
     DROPOUT = 0.4
     NUM_WORKERS = 4
     N_EPOCHS = 30
-    RANDOM_VAL_SPLIT = True
+    RANDOM_VAL_SPLIT = False
     EVAL_TEST = True
 
     if socket.gethostname() == "Tommy-Lees-MacBook-Air.local":
