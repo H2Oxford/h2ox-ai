@@ -133,13 +133,6 @@ def train(
                 loss.backward()
                 optimizer.step()
 
-                _save_weights_and_optimizer(
-                    epoch=epoch,
-                    experiment=experiment,
-                    model=model,
-                    optimizer=optimizer,
-                )
-
             #  return info to user
             learning_rate = optimizer.param_groups[0]["lr"]
 
@@ -163,10 +156,15 @@ def train(
                 print(f"-- Validation Loss: {val_loss:.3f} --")
                 all_val_losses.append(val_loss)
 
-        if cache_model:
-            # Save model checkpoint
-            # save optimizer checkpoint
-            pass
+        
+        # cache_model
+        _save_weights_and_optimizer(
+            epoch=epoch,
+            experiment=experiment,
+            model=model,
+            optimizer=optimizer,
+        )
+
 
     return (all_losses, all_val_losses)
 
