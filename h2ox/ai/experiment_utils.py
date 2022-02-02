@@ -1,7 +1,6 @@
 from typing import Optional
 from pathlib import Path
 from datetime import datetime
-from click import Option
 import yaml
 import matplotlib.pyplot as plt
 import numpy as np
