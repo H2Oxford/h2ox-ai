@@ -323,10 +323,15 @@ def train_validation_split(
             train_dataset, [train_size, validation_size]
         )
     else:
-        # SEQUENTIAL
-        # train from 1:N; validation from N:-1
-        train_dd = Subset(train_dataset, np.arange(train_size))
-        validation_dd = Subset(train_dataset, np.arange(train_size, len(train_dataset)))
+        # SEQUENTIAL = train from 1:N; validation from N:-1 
+        # (NOTE: INDEXED BY TIME NOT SPACE - first sort the index_df by time)
+        index_df = train_dataset._get_meta_dataframe()
+        index_df = index_df.sort_values("initialisation_time")
+        train_indexes = index_df.index[:train_size]
+        val_indexes = index_df.index[-validation_size:]
+
+        train_dd = Subset(train_dataset, train_indexes)
+        validation_dd = Subset(train_dataset, val_indexes)
 
     return train_dd, validation_dd
 
