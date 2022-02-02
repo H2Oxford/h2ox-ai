@@ -8,9 +8,11 @@ import xarray as xr
 from torch import nn, optim
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
+from loguru import logger
 
 from h2ox.ai.dataset import FcastDataset
 from h2ox.ai.train_utils import get_exponential_weights
+from sacred import Experiment
 
 
 def weighted_mse_loss(
@@ -37,8 +39,24 @@ def initialise_training(
     return optimizer, scheduler, loss_fn
 
 
-def _dump_model():
-    pass
+def _save_weights_and_optimizer(
+    epoch: int, 
+    experiment: Experiment, 
+    model: torch.Module, 
+    optimizer: torch.optim.Optimizer,
+):
+    run_dir = Path(experiment.observers[0].dir) if experiment.observers[0].dir is not None else None
+
+    if run_dir is not None:
+        logger.info(f"Saving model_epoch{epoch:03d}.pt to {run_dir.as_posix()}")
+        weight_path = run_dir / f"model_epoch{epoch:03d}.pt"
+        torch.save(model.state_dict(), str(weight_path))
+
+        logger.info(f"Saving optimizer_state_epoch{epoch:03d}.pt to {run_dir.as_posix()}")
+        optimizer_path = run_dir / f"optimizer_state_epoch{epoch:03d}.pt"
+        torch.save(optimizer.state_dict(), str(optimizer_path))
+    
+    logger.info(f"No run_dir found in experiment observers. Not saving model or optimizer state.")
 
 
 def train(
@@ -52,6 +70,7 @@ def train(
     validate_every_n: int = 3,
     catch_nans: bool = False,
     cache_model: bool = False,
+    experiment: Optional[Experiment] = None
 ) -> Tuple[List[float], ...]:
     # TODO (tl): add early stopping
     # TODO (tl): save model checkpoints & optimizer checkpoints
@@ -105,6 +124,13 @@ def train(
                 #  calculate gradients and change weights
                 loss.backward()
                 optimizer.step()
+
+                _save_weights_and_optimizer(
+                    epoch=epoch,
+                    experiment=experiment,
+                    model=model,
+                    optimizer=optimizer,
+                )
 
             #  return info to user
             learning_rate = optimizer.param_groups[0]["lr"]
@@ -304,7 +330,7 @@ if __name__ == "__main__":
     DROPOUT = 0.4
     NUM_WORKERS = 4
     N_EPOCHS = 30
-    RANDOM_VAL_SPLIT = True
+    RANDOM_VAL_SPLIT = False
     EVAL_TEST = True
 
     if socket.gethostname() == "Tommy-Lees-MacBook-Air.local":

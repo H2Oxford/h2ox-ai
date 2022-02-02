@@ -138,9 +138,11 @@ def _main(
         epochs=n_epochs,
         val_dl=val_dl,
         validate_every_n=validate_every_n,
+        experiment=ex,
     )
 
-    # get filepath for experiment dir 
+    # get filepath for experiment dir from the Sacred Experiment
+    # TODO(tl): is ex a global variable?
     filepath = Path(ex.observers[0].dir) if ex.observers[0].dir is not None else None
     if filepath is not None:
         logger.info(f"Saving losses.png to {filepath}")
