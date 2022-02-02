@@ -461,6 +461,9 @@ class FcastDataset(Dataset):
     def get_meta(self, idx: int) -> Tuple[str, pd.Timestamp]:
         return self.sample_lookup[idx]
 
+    def _get_meta_dataframe(self) -> pd.DataFrame:
+        return pd.DataFrame(self.sample_lookup.values(), index=self.sample_lookup.keys()).rename({0: "location", 1: "initialisation_time"}, axis=1)
+
     def __getitem__(self, idx) -> Dict[str, Union[Tensor, Dict[str, Tensor]]]:
         data: Dict[str, pd.DataFrame] = self.all_data[idx]
         if data == {}:
