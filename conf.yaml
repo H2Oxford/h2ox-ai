@@ -2,13 +2,81 @@
 name: "test"
 path_to_runs_folder:
 
+# DataUnits
+data_units:
+  doy:
+    class: h2ox.ai.dataset.data_units.SynthTrigDoY
+    site_keys:
+      - kabini
+      - harangi
+      - bhadra
+      - hemavathy
+      - lower_bhawani
+      - krishnaraja_sagar
+    sin_or_cos: [sin,cos]
+    start_step: 0
+    end_step: 90
+    step_size: 1
+  forecast:
+    class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+    variable_keys: [t2m,tp]
+    gdf_path: /home/jupyter/h2ox-ai/data/basins.geojson
+    site_col: DAM_NAME
+    site_keys:
+      - kabini
+      - harangi
+      - bhadra
+      - hemavathy
+      - lower_bhawani
+      - krishnaraja_sagar
+    datetime_col: time
+    z_address: gs://oxeo-forecasts/ecmwf-forecast
+    steps_key: step
+    steps: null
+    zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+    lat_col: latitude
+    lon_col: longitude
+  historic:
+    class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+    variable_keys: [t2m,tp]
+    gdf_path: /home/jupyter/h2ox-ai/data/basins.geojson
+    site_col: DAM_NAME
+    site_keys:
+      - kabini
+      - harangi
+      - bhadra
+      - hemavathy
+      - lower_bhawani
+      - krishnaraja_sagar
+    datetime_col: time
+    z_address: gs://oxeo-era5/build
+    steps_key: null
+    steps: null
+    zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+    lat_col: latitude
+    lon_col: longitude
+  targets:
+    class: h2ox.ai.dataset.data_units.BQDataUnit
+    variable_keys: [DATETIME, WATER_VOLUME, RESERVOIR_NAME]
+    site_col: RESERVOIR_NAME
+    datetime_col: DATETIME
+    bq_address: oxeo-main.wave2web.reservoir-data
+    site_keys:
+      - kabini
+      - harangi
+      - bhadra
+      - hemavathy
+      - lower_bhawani
+      - krishnaraja_sagar
+
 # Data Parameters
+pytorch_dataset: h2ox.ai.dataset.dataset.FcastDataset
 normalize: false
 seq_len: 60
 future_horizon: 76
 encode_doy: true
 include_ohe: true
-sites: 
+sites:
   - "kabini"                                     # "Hirakud"
   - "harangi"
   - "bhadra"
@@ -30,7 +98,7 @@ dropout: 0.4
 
 # Training Parameters
 num_workers: 4
-random_val_split: false 
+random_val_split: false
 eval_test: false
 batch_size: 100
 n_epochs: 100
