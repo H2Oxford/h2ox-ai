@@ -1,34 +1,63 @@
 # Experiment Parameters
-name: "test"
+name: test
 path_to_runs_folder:
 
 # Data Units
 data_units:
-  test_csv_sam_data:
-    class: h2ox.ai.dataset.data_units.CSVDataUnit
-    data_path: ./data/raw/samantha_data.csv
-    variable_keys: [ndwi_at, ndwi_up]
-    sites: [Hirakud] #
-    date_col: time
-    site_col: location
-  test_csv_pf6:
-    class: h2ox.ai.dataset.data_units.CSVDataUnit
-    data_path: ./data/raw/ndwi_pf6_daily_modis.csv
-    variable_keys: [mean]
-    sites: [452100]
-    date_col: date
-    site_col: PFAF_ID
-  test_spatial_zarr:
+  test-doy:
+    class: h2ox.ai.dataset.data_units.SynthTrigDoY
+    site_keys: [hirakud]
+    sin_or_cos: [sin,cos]
+    start_step: 0
+    end_step: 90
+    step_size: 1
+  test-spatial-zarr-forecast:
     class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
-    variable_keys: [t2m]
-    gdf_path: ./data/GRAND_pilot_reservoirs.gpkg
-    gdf_site_col: GRAND_ID
-    sites: [4857]
-    z_address: gs://oxeo-era5/build
+    variable_keys: [tp]
+    gdf_path: ~/h2ox-ai/data/GRAND_pilot_reservoirs.gpkg
+    site_col: GRAND_ID
+    site_keys: [4857]
+    datetime_col: time
+    z_address: gs://oxeo-forecasts/ecmwf-forecast
+    steps_key: step
     steps: null
     zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
     lat_col: latitude
     lon_col: longitude
+  test-csv-sam:
+    class: h2ox.ai.dataset.data_units.CSVDataUnit
+    data_path: ~/h2ox-ai/data/raw/samantha_data.csv
+    variable_keys: [ndwi_at, ndwi_up]
+    site_keys: [Hirakud] #
+    date_col: time
+    site_col: location
+  test-csv-pf6:
+    class: h2ox.ai.dataset.data_units.CSVDataUnit
+    data_path: ~/h2ox-ai/data/raw/ndwi_pf6_daily_modis.csv
+    variable_keys: [mean]
+    site_keys: [452100]
+    date_col: date
+    site_col: PFAF_ID
+  test-spatial-zarr-era5:
+    class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+    variable_keys: [t2m]
+    gdf_path: ~/h2ox-ai/data/GRAND_pilot_reservoirs.gpkg
+    site_col: GRAND_ID
+    site_keys: [4857]
+    datetime_col: time
+    z_address: gs://oxeo-era5/build
+    steps_key: null
+    steps: null
+    zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+    lat_col: latitude
+    lon_col: longitude
+  test-bq:
+    class: h2ox.ai.dataset.data_units.BQDataUnit
+    variable_keys: [DATETIME, WATER_VOLUME, RESERVOIR_NAME]
+    site_col: RESERVOIR_NAME
+    datetime_col: DATETIME
+    bq_address: oxeo-main.wave2web.reservoir-data
+    site_keys: [hirakud]
 
 
 # Data Parameters
@@ -37,7 +66,7 @@ future_horizon: 76
 encode_doy: true
 include_ohe: true
 sites:
-  - "hirakud"                            # "Hirakud"
+  - hirakud                            # "Hirakud"
 target_var: "volume_bcm"      # "adjusted_level"
 history_variables: ["tp", "t2m", "volume_bcm"]    # ["ndwi_all", "snow_all", "adjusted_level"]
 forecast_variables: ["tp", "t2m"]

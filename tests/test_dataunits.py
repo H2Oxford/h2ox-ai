@@ -6,16 +6,19 @@ import yaml
 
 def test(sdt, edt, cfg):
 
+    pass
+
     for kk, vv in cfg["data_units"].items():
-        ob = locate(vv["class"])
-        inst = ob()
-        array = inst.build(
+        data_unit_instance = locate(vv["class"])()
+        array = data_unit_instance.build(
             start_datetime=sdt,
             end_datetime=edt,
-            site_keys=dict(zip(vv["sites"], cfg["sites"])),
+            site_keys=dict(zip(vv["site_key_map"], cfg["sites"])),
             data_unit_name=kk,
             **vv
         )
+        print("array")
+        print(array)
 
 
 if __name__ == "__main__":
