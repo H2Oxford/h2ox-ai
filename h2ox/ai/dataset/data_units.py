@@ -1,9 +1,13 @@
 import abc
-import datetime
+from datetime import datetime, timedelta
+from pydoc import locate
 from typing import Dict, List, Optional, Union
 
+import geopandas as gpd
+import numpy as np
 import pandas as pd
 import xarray as xr
+from google.cloud import bigquery
 from loguru import logger
 
 from h2ox.ai.dataset.xr_reducer import XRReducer
@@ -18,7 +22,7 @@ class DataUnit(abc.ABC):
         self,
         start_datetime: datetime,
         end_datetime: datetime,
-        site_keys: Union[List[str], Dict[str, str]],
+        site_mapper: Dict[str, str],
         variable_keys: List[str],
         data_unit_name: [str],
         **kwargs,
@@ -45,7 +49,7 @@ class CSVDataUnit(DataUnit):
         self,
         start_datetime: datetime,
         end_datetime: datetime,
-        site_keys: Union[List[str], Dict[str, str]],
+        site_mapper: Dict[str, str],
         variable_keys: Union[List[str], Dict[str, str]],
         data_unit_name: [str],
         data_path: str,
@@ -85,12 +89,8 @@ class CSVDataUnit(DataUnit):
         df = pd.read_csv(data_path)
 
         # map unique site names
-        if isinstance(site_keys, dict):
-            df["global_sites"] = df[site_col].map(site_keys)
-            chosen_sites = site_keys.values()
-        else:
-            df["global_sites"] = df[site_col]
-            chosen_sites = site_keys
+        df["global_sites"] = df[site_col].map(site_mapper)
+        chosen_sites = site_mapper.values()
 
         # cast datetime column to day
         df[date_col] = pd.to_datetime(df[date_col]).dt.floor("d")
@@ -111,6 +111,10 @@ class CSVDataUnit(DataUnit):
         remap_keys[date_col] = "date"  # set a common date name
         array = array.rename(**remap_keys)
 
+        # add steps dimension
+        steps_idx = pd.Series([timedelta(days=ii) for ii in [0]], name="steps")
+        array = array.expand_dims({"steps": steps_idx})
+
         return array
 
 
@@ -122,16 +126,19 @@ class ZRSpatialDataUnit(DataUnit):
         self,
         start_datetime: datetime,
         end_datetime: datetime,
-        site_keys: Union[List[str], Dict[str, str]],
+        site_mapper: Dict[str, str],
         variable_keys: List[str],
         data_unit_name: [str],
         gdf_path: str,
-        gdf_site_col: str,
+        site_col: str,
+        datetime_col: str,
         z_address: str,
-        step: Optional[List[int]],
+        steps_key: Optional[str],
+        steps: Optional[List[int]],
         zarr_mapper: Optional[str],
         lat_col: str = "latitude",
         lon_col: str = "longitude",
+        **kwargs,
     ) -> xr.DataArray:
 
         """Build the dataunit by reducing a zarr archive with a geopandas gdf.
@@ -144,6 +151,7 @@ class ZRSpatialDataUnit(DataUnit):
             data_unit_name (str): unique name for this data unit as prefix
             gdf_path (str): path to a gpd.GeoDataFrame
             gdf_site_col (str): column in the gpd.GeoDataFrame containing the site names
+            datetime_col (str): name of the datetime coordinate
             z_address (str): Address of the zarr archive
             lat_col (str): name of the latitude coordinate
             lon_col (str): name of the longitude coodinate
@@ -154,34 +162,33 @@ class ZRSpatialDataUnit(DataUnit):
 
         """
 
+        logger.info(
+            f"{data_unit_name} - Building; reducing {z_address} over {gdf_path}"
+        )
+
         # load the gdf, map the site names, and set the index
         gdf = gpd.read_file(gdf_path)
 
         # map unique site names
-        if isinstance(site_keys, dict):
-            gdf["global_sites"] = gdf[site_col].map(site_keys)
-            chosen_sites = site_keys.values()  # global name
-        else:
-            gdf["global_sites"] = gdf[site_col]
-            chosen_sites = site_keys
-
+        gdf["global_sites"] = gdf[site_col].map(site_mapper)
+        chosen_sites = site_mapper.values()  # global name
         gdf = gdf.set_index("global_sites")
 
         # remap keys to dict
-        if isinstance(variable_keys, list):
-            remap_keys = dict(
-                zip(variable_keys, [f"{data_unit_name}_{kk}" for kk in variable_keys])
-            )
-        else:
-            remap_keys = {
-                kk: f"{data_unit_name}_{vv}" for kk, vv in variable_keys.items()
-            }
+        # if isinstance(variable_keys, list):
+        #     remap_keys = dict(
+        #         zip(variable_keys, [f"{data_unit_name}_{kk}" for kk in variable_keys])
+        #     )
+        # else:
+        #     remap_keys = {
+        #         kk: f"{data_unit_name}_{vv}" for kk, vv in variable_keys.items()
+        #     }
 
         # get the mapper
-        if zarr_mapp is None:
-            z_mapper = locate("h2ox.ai.dataset.utils.null_mapper")
+        if zarr_mapper is None:
+            z_mapper = locate("h2ox.ai.dataset.utils.null_mapper")()
         else:
-            z_mapper = locate(zarr_mapper)
+            z_mapper = locate(zarr_mapper)()
 
         # map the zxr
         zx_arr = xr.open_zarr(z_mapper(z_address))
@@ -199,17 +206,38 @@ class ZRSpatialDataUnit(DataUnit):
             for idx, row in gdf.loc[gdf.index.isin(chosen_sites)].iterrows():
 
                 reduced_geom_arrays[idx] = ds.reduce(
-                    row["geom"], start_datetime, end_datetime
+                    row["geometry"], start_datetime, end_datetime
                 )
 
             reduced_var_arrays[variable] = xr.concat(
                 list(reduced_geom_arrays.values()),
-                pd.Index(list(reduced_geom_arrays.keys()), name="site"),
+                pd.Index(list(reduced_geom_arrays.keys()), name="global_sites"),
             )
-            reduced_var_arrays[variable].name = f"{data_unit_name}_{variable}""
+            reduced_var_arrays[variable].name = f"{data_unit_name}_{variable}"
 
         # merge back along the variable dimension
-        return xr.merge(list(reduced_var_arrays.values()))
+        array = xr.merge(list(reduced_var_arrays.values()))
+
+        # force daily time dimension
+        array = array.resample({datetime_col: "1D"}).mean(datetime_col)
+
+        if steps_key is None:
+            steps_key = "steps"
+
+        # check if steps exists
+        if steps_key not in array.coords.keys():
+            steps_idx = pd.Series([timedelta(days=ii) for ii in [0]], name="steps")
+            array = array.expand_dims({steps_key: steps_idx})
+        else:
+            if steps is not None:
+                array = array.sel(
+                    {steps_key: pd.Series([timedelta(days=ii) for ii in steps])}
+                )
+
+        # rename for consistency
+        array = array.rename({datetime_col: "date", steps_key: "steps"})
+
+        return array
 
 
 class BQDataUnit(DataUnit):
@@ -220,10 +248,13 @@ class BQDataUnit(DataUnit):
         self,
         start_datetime: datetime,
         end_datetime: datetime,
-        site_keys: Union[List[str], Dict[str, str]],
+        site_mapper: Dict[str, str],
         variable_keys: List[str],
         data_unit_name: [str],
+        site_col: str,
+        datetime_col: str,
         bq_address: str,
+        **kwargs,
     ) -> xr.DataArray:
 
         """Build the dataunit by reducing a zarr archive with a geopandas gdf.
@@ -241,53 +272,110 @@ class BQDataUnit(DataUnit):
 
         """
 
+        logger.info(f"{data_unit_name} - Building; querying {bq_address}")
+
         client = bigquery.Client()
+
+        query_keys = site_mapper.keys()
+
+        sites_query = '("' + '","'.join(query_keys) + '")'
 
         # construct query
         Q = f"""
-            SELECT *
+            SELECT {', '.join(variable_keys)}
             FROM `{bq_address}`
+            WHERE
+              {site_col} in {sites_query}
+              AND {datetime_col} <= "{end_datetime.isoformat()[0:10]}"
+              AND {datetime_col} >= "{start_datetime.isoformat()[0:10]}"
         """
 
         # execute query
-        client.query(Q).result().to_dataframe()
+        df = client.query(Q).result().to_dataframe()
 
-        # cast to xarray df
+        df[datetime_col] = pd.to_datetime(df[datetime_col]).dt.floor("d")
+
+        df["global_sites"] = df[site_col].map(site_mapper)
+
+        df = df.set_index(["global_sites", datetime_col])
+
+        # drop duplicate index
+        df = df[~df.index.duplicated(keep="first")]
+
+        array = df.to_xarray()
+
+        # remap variable and coordinate names
+        if isinstance(variable_keys, list):
+            remap_keys = dict(
+                zip(variable_keys, [f"{data_unit_name}_{kk}" for kk in variable_keys])
+            )
+        else:
+            remap_keys = {
+                kk: f"{data_unit_name}_{vv}" for kk, vv in variable_keys.items()
+            }
+
+        remap_keys[datetime_col] = "date"  # set a common date name
+        array = array.rename(**remap_keys)
+
+        # add steps dimension
+        steps_idx = pd.Series([timedelta(days=ii) for ii in [0]], name="steps")
+        array = array.expand_dims({"steps": steps_idx})
 
         return array
 
 
-class XRDataUnit(DataUnit):
+class SynthTrigDoY(DataUnit):
 
-    """A dataclass for building dataframes from xarray-compatible source files."""
+    """A dataunit for building synthetic day-of-year data."""
 
     def build(
         self,
         start_datetime: datetime,
         end_datetime: datetime,
-        site_keys: Union[List[str], Dict[str, str]],
-        variable_keys: List[str],
+        site_mapper: Dict[str, str],
+        sin_or_cos: Union[str, List[str]],
         data_unit_name: [str],
-        data_path: str,
+        start_step: int,
+        end_step: int,
+        step_size: int,
+        **kwargs,
     ) -> xr.DataArray:
 
-        """Build the dataunit. Data must be indexed by datetime, site and variable.
+        steps = range(start_step, end_step, step_size)
 
-        Args:
-            start_datetime (datetime): dataset start datetime
-            end_datetime (datetime): dataset end datetime
-            site_keys (List[str]): dataset key list, where keys are global site names.
-            variable_keys (List[str]): variable key list
-            data_unit_name (str): unique name for this data unit as prefix
-            data_path (str): path to xarray-compatible datafile
+        logger.info(f"{data_unit_name} - Building; synth DoY with {len(steps)} steps")
 
-        Returns:
-            xr.DataArray
+        if isinstance(sin_or_cos, str):
+            sin_or_cos = [sin_or_cos]
 
-        """
+        arrays = []
+        for trig_iden in sin_or_cos:
 
-        # load the xr data
+            if trig_iden == "sin":
+                trig_fn = np.sin
+            elif trig_iden == "cos":
+                trig_fn = np.cos
+            else:
+                raise ValueError("sin_or_cos must be one of (or list of) 'sin', 'cos'")
 
-        # check the variables etc.
+            idx = pd.date_range(start_datetime, end_datetime, freq="d")
+            idx.name = "date"
 
-        return array
+            cols = pd.Series([timedelta(days=ii) for ii in steps], name="steps")
+
+            df = pd.DataFrame(index=idx, columns=cols)
+
+            for cc in df.columns:
+                df[cc] = df.index + cc
+                df[cc] = trig_fn(df[cc].dt.dayofyear / 365 * 2 * np.pi)
+
+            arr = df.unstack().to_xarray()
+            arr.name = f"{data_unit_name}_{trig_iden}"
+            arrays.append(arr)
+
+        # apply to all sites
+
+        global_sites = list(site_mapper.values())
+        array = xr.merge(arrays)
+
+        return array.expand_dims({"global_sites": global_sites})
