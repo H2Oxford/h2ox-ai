@@ -229,6 +229,7 @@ class FcastDataset(Dataset):
             targets.sel({"date-site": idx})
             .to_array()
             .transpose("date-site", "target_roll", "variable")
+            .sel({"variable": self.target_var})
             .data
         )
 
@@ -265,7 +266,7 @@ class FcastDataset(Dataset):
             ],
             pd.TimedeltaIndex(
                 [
-                    timedelta(days=self.historical_seq_len - ii)
+                    timedelta(days=-self.historical_seq_len + ii)
                     for ii in range(self.historical_seq_len)
                 ],
                 name="historic_roll",
@@ -300,7 +301,10 @@ class FcastDataset(Dataset):
         future_period = pd.TimedeltaIndex(
             [
                 timedelta(days=ii)
-                for ii in range(self.forecast_horizon + 1, self.future_horizon + 1)
+                for ii in range(
+                    self.forecast_horizon + 1,
+                    self.forecast_horizon + self.future_horizon,
+                )
             ]
         )
 
@@ -320,13 +324,13 @@ class FcastDataset(Dataset):
             [
                 data[self.target_var]
                 .sel({"steps": np.timedelta64(0)})
-                .shift({"date": ii})
-                for ii in range(self.forecast_horizon + self.future_horizon + 1)
+                .shift({"date": -ii})
+                for ii in range(1, self.forecast_horizon + self.future_horizon)
             ],
             pd.TimedeltaIndex(
                 [
                     timedelta(days=ii)
-                    for ii in range(self.forecast_horizon + self.future_horizon + 1)
+                    for ii in range(1, self.forecast_horizon + self.future_horizon)
                 ],
                 name="target_roll",
             ),
@@ -384,44 +388,39 @@ class FcastDataset(Dataset):
         ).rename({0: "location", 1: "initialisation_time"}, axis=1)
 
     def __getitem__(self, idx) -> Dict[str, Union[Tensor, Dict[str, Tensor]]]:
+
         data: Dict[str, pd.DataFrame] = self.all_data[idx]
+
+        site, date = self.sample_lookup[idx]
+
         if data == {}:
             return None
 
         # CREATE META DICT (for recreating outputs for correct time)
-        input_times = data["x_d"].index.to_numpy().astype(float)
-        target_times = data["y"].index.to_numpy().astype(float)
-        meta = {
+        input_times = [
+            (date + timedelta(days=ii)) for ii in range(-data["x_d"].shape[0], 0)
+        ]
+        target_times = [
+            (date + timedelta(days=ii) for ii in range(1, data["y"].shape[0]))
+        ]
+
+        meta = {  # noqa
             "input_times": input_times,
             "target_times": target_times,
+            "site": site,
             "index": np.array([idx]),
         }
 
-        # CREATE NUMPY ARRAYS FOR DATA
-        # (seq_len, n_historical_features)
-        x_d = data["x_d"].values
-        # (forecast_horizon, n_forecast_features)
-        x_f = data["x_f"].values if data["x_f"] is not None else np.empty([])
-        # (future_horizon, n_future_features)
-        x_ff = data["x_ff"].values
-        # (forecast_horizon + future_horizon, 1)
-        y = data["y"].values
-
-        data = {
-            "meta": meta,
-            "x_d": x_d,
-            "y": y,
-            "x_f": x_f,
-            "x_ff": x_ff,
-        }
+        # data["meta"] = meta
 
         # CONVERT TO torch.Tensor OBJECTS
         for key in data.keys():
-            if isinstance(data[key], dict):
-                for key2 in data[key]:
-                    data[key][key2] = torch.tensor(data[key][key2]).float()
-            else:
-                data[key] = torch.tensor(data[key]).float()
+            if key != "meta":
+                if isinstance(data[key], dict):
+                    for key2 in data[key]:
+                        data[key][key2] = torch.tensor(data[key][key2]).float()
+                else:
+                    data[key] = torch.tensor(data[key]).float()
 
         return data
 
