@@ -14,7 +14,6 @@ from h2ox.ai.dataset.xr_reducer import XRReducer
 
 
 class DataUnit(abc.ABC):
-
     """An abstract data "unit" class for h2ox-ai."""
 
     @abc.abstractmethod
@@ -24,7 +23,7 @@ class DataUnit(abc.ABC):
         end_datetime: datetime,
         site_mapper: Dict[str, str],
         variable_keys: List[str],
-        data_unit_name: [str],
+        data_unit_name: str,
         **kwargs,
     ) -> xr.DataArray:
         """Build the dataunit.
@@ -51,7 +50,7 @@ class CSVDataUnit(DataUnit):
         end_datetime: datetime,
         site_mapper: Dict[str, str],
         variable_keys: Union[List[str], Dict[str, str]],
-        data_unit_name: [str],
+        data_unit_name: str,
         data_path: str,
         date_col: str,
         site_col: str,
@@ -128,7 +127,7 @@ class ZRSpatialDataUnit(DataUnit):
         end_datetime: datetime,
         site_mapper: Dict[str, str],
         variable_keys: List[str],
-        data_unit_name: [str],
+        data_unit_name: str,
         gdf_path: str,
         site_col: str,
         datetime_col: str,
@@ -259,7 +258,7 @@ class BQDataUnit(DataUnit):
         end_datetime: datetime,
         site_mapper: Dict[str, str],
         variable_keys: List[str],
-        data_unit_name: [str],
+        data_unit_name: str,
         site_col: str,
         datetime_col: str,
         bq_address: str,
@@ -346,7 +345,7 @@ class SynthTrigDoY(DataUnit):
         end_datetime: datetime,
         site_mapper: Dict[str, str],
         sin_or_cos: Union[str, List[str]],
-        data_unit_name: [str],
+        data_unit_name: str,
         start_step: int,
         end_step: int,
         step_size: int,
