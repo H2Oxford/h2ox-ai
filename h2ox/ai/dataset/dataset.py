@@ -183,6 +183,8 @@ class FcastDataset(Dataset):
         self.all_data: DefaultDict[int, Dict] = defaultdict(dict)
         self.sample_lookup: Dict[int, Tuple[str, pd.Timestamp]] = {}
 
+        # TODO: but are you sure you want to do this here? you want to normalise the data
+        # before so you can use the TRAIN mean/std for the TEST data
         def normalise_func(arr):
             return (arr - arr.mean()) / arr.std()
 

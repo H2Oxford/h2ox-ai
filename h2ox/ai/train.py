@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from loguru import logger
 
-from h2ox.ai.dataset import FcastDataset
+from h2ox.ai.dataset.dataset import FcastDataset
 from h2ox.ai.train_utils import get_exponential_weights
 from sacred import Experiment
 
@@ -341,10 +341,10 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
 
-    from h2ox.ai.data_utils import calculate_errors
-    from h2ox.ai.dataset import FcastDataset
+    from h2ox.ai.dataset.utils import calculate_errors
+    from h2ox.ai.dataset.dataset import FcastDataset
     from h2ox.ai.model import initialise_model
-    from h2ox.ai.scripts.utils import load_zscore_data
+    from h2ox.ai.dataset.utils import load_zscore_data
 
     # parameters for the yaml file
     ENCODE_DOY = True
