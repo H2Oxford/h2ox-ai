@@ -115,20 +115,3 @@ class DatasetFactory:
         ptdataset = PTDataset(data, **self.ptds_cfg)
 
         return ptdataset
-
-
-if __name__ == "__main__":
-    # TODO: write some minimal test of this code
-    from ruamel.yaml import YAML
-    from pathlib import Path
-
-    yml_path = Path("conf.yaml")
-    with yml_path.open('r') as fp:
-        yaml = YAML(typ="safe")
-        cfg = yaml.load(fp)
-
-    dsf = DatasetFactory(cfg)
-    dsf.build_dataset()
-    assert False
-
-    
