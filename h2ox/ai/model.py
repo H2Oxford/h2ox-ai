@@ -208,8 +208,8 @@ if __name__ == "__main__":
     # load dataloader
     # initialise model
     # run model forward
-    from h2ox.ai.dataset import FcastDataset
-    from h2ox.ai.scripts.utils import load_zscore_data
+    from h2ox.ai.dataset.dataset import FcastDataset
+    from h2ox.ai.dataset.utils import load_zscore_data
     from pathlib import Path
     from torch.utils.data import DataLoader
 
