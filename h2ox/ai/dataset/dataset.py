@@ -1,16 +1,16 @@
 from collections import defaultdict
-from pathlib import Path
+from datetime import timedelta
 from typing import DefaultDict, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import torch
 import xarray as xr
+from loguru import logger
 from torch import Tensor
 from torch.utils.data import Dataset
-from tqdm import tqdm
 
-from h2ox.ai.data_utils import create_doy
+from h2ox.ai.dataset.utils import assymetric_boolean_dilate, group_consecutive_nans
 
 
 # ASSUMES: "time" is the named dimension/index column
@@ -19,99 +19,44 @@ from h2ox.ai.data_utils import create_doy
 class FcastDataset(Dataset):
     def __init__(
         self,
-        history: xr.Dataset,
-        forecast: Optional[xr.Dataset],
-        target: xr.Dataset,
-        historical_seq_len: int = 60,
-        future_horizon: int = 76,
-        target_var: str = "PRESENT_STORAGE_TMC",
-        history_variables: List[str] = ["t2m"],  # noqa
-        forecast_variables: List[str] = ["t2m"],  # noqa
-        encode_doy: bool = True,
-        mode: str = "train",
-        spatial_dim: str = "location",
-        forecast_initialisation_dim: str = "initialisation_time",
-        forecast_horizon_dim: str = "forecast_horizon",
-        cache: bool = False,
-        experiment_dir: Optional[Path] = None,
-        include_ohe: bool = True,
+        data: xr.Dataset,
+        select_sites: List[str],
+        historical_seq_len: int,
+        forecast_horizon: int,
+        future_horizon: int,
+        target_var: str,
+        historic_variables: List[str],  # noqa
+        forecast_variables: List[str],  # noqa
+        future_variables: List[str],
+        max_consecutive_nan: int,
+        ohe_or_multi: str,
+        normalise: Optional[List[str]],
+        **kwargs,
     ):
-        # TODO: check that date column is saved as "time"
-        # store data in memory
-        # TODO: how do we do this with cacheing? what stage to cache?
-        self.history = history
-        self.forecast = forecast
-        self.target = target
+        # TODO: error and var checking
 
-        # ATTRIBUTES
-        self.mode = mode
-        self.cache = cache
-        if self.cache:
-            assert (
-                experiment_dir is not None
-            ), "Must specify an experiment directory if cache is True"
-        self.experiment_dir = experiment_dir
         # variables
         self.target_var = target_var
-        self.history_variables = history_variables
+        self.historic_variables = historic_variables
         self.forecast_variables = forecast_variables
-        self.future_variables = []
-        # dimension names
-        self.spatial_dim = spatial_dim
-        self.forecast_initialisation_dim = forecast_initialisation_dim
-        self.forecast_horizon_dim = forecast_horizon_dim
-        # engineered features
-        self.encode_doy = encode_doy
+        self.future_variables = future_variables
+
+        # soft data and filtering rules
+        self.normalise = normalise
+        self.max_consecutive_nan = max_consecutive_nan
+
+        # self.include = include_doy
+
         # size of arrays
-        self.seq_len = historical_seq_len
+        self.historical_seq_len = historical_seq_len
         self.future_horizon = future_horizon
-        self.forecast_horizon = (
-            pd.Timedelta(forecast[forecast_horizon_dim].max().values).days
-            if forecast is not None
-            else 0
-        )
+        self.forecast_horizon = forecast_horizon
         self.target_horizon = self.future_horizon + self.forecast_horizon
-        self.times = np.ndarray([])
 
-        # TODO: do we want to add engineered features in the torch.Dataset?
-        # TODO: how shall we specify what data is used in the future dataframe?
-        # add engineered features
-        self.history_variables = (
-            self.history_variables + ["doy_sin", "doy_cos"]
-            if encode_doy
-            else self.history_variables
-        )
-
-        self.forecast_variables = (
-            self.forecast_variables + ["doy_sin", "doy_cos"]
-            if (encode_doy) & (self.forecast_variables is not None)
-            else self.forecast_variables
-        )
-
-        self.future_variables = (
-            ["doy_sin", "doy_cos"] if encode_doy else self.future_variables
-        )
-
-        self.include_ohe = include_ohe
-        if self.include_ohe:
-            # create lookup for the one_hot_encoding
-            self.categories_ = self.history[self.spatial_dim].values
-            self.ohe = torch.nn.functional.one_hot(
-                torch.arange(self.categories_.size)
-            ).numpy()
-            self.categories_lookup = {
-                self.categories_[ix]: self.ohe[ix, :]
-                for ix in np.arange(self.categories_.size)
-            }
-            self.new_column_names = [f"{cat}_ohe" for cat in self.categories_]
-
-            # add new columns to the list of features included
-            self.history_variables += self.new_column_names
-            self.forecast_variables += self.new_column_names
-            self.future_variables += self.new_column_names
+        self.ohe_or_multi = ohe_or_multi
 
         # turn the data into a dictionary for model input
-        self.engineer_arrays()
+        self.engineer_arrays(data)
 
     def __len__(self) -> int:
         return self.n_samples
@@ -147,278 +92,249 @@ class FcastDataset(Dataset):
 
         return total_str
 
-    def engineer_arrays(self):
+    def valid_datetimes(self, data):
+
+        # first filter consecutive nans above a certain threshold (for corrupt data, etc.)
+        dd = {}
+        for var in list(data.keys()):
+
+            cons_nan = group_consecutive_nans(
+                da=data[var],
+                variable_name=var,
+                outer_groupby_coords="global_sites",
+                longitudinal_coord="date",
+            )
+            dd[var] = cons_nan
+
+        consecutive_nan_da = (
+            (xr.merge(dd.values()) > self.max_consecutive_nan)
+            .isel({"steps": 0})
+            .to_array()
+            .any(dim=("variable", "global_sites"))
+        )
+
+        dates = consecutive_nan_da["date"].data
+
+        consecutive_nan_arr = consecutive_nan_da.data
+
+        # dialate this boolean mask for accomodate historic and future sequence length
+        consecutive_nan_arr = assymetric_boolean_dilate(
+            arr=consecutive_nan_arr,
+            left_dilation=self.historical_seq_len,
+            right_dilatation=self.target_horizon,
+            target=True,
+        )
+
+        # mask the early and late data for the sequence lengths
+        consecutive_nan_arr[: self.historical_seq_len] = True
+        consecutive_nan_arr[-1 * self.target_horizon :] = True
+
+        return dates[~consecutive_nan_arr]
+
+    def _onehotencode(self, data_portion, offset_dim):
+        ohe = pd.get_dummies(
+            data_portion.transpose("date", "global_sites", offset_dim, "variable")
+            .stack({"date-site": ("date", "global_sites")})["global_sites"]
+            .to_dataframe()
+        ).to_xarray()
+
+        return xr.merge([data_portion.to_dataset(dim="variable"), ohe]).stack(
+            {"date-site": ("date", "global_sites")}
+        )
+
+    def _reshape_data_ohe(self, data):
+
+        historic = self._onehotencode(
+            self._get_historic_data(data).drop("steps"), "historic_roll"
+        )  # DATES*sites x STEPS x var+ohe
+
+        forecast = self._onehotencode(
+            self._get_forecast_data(data), "steps"
+        )  # DATES*sites x STEPS x var+ohe
+
+        future = self._onehotencode(
+            self._get_future_data(data), "steps"
+        )  # DATES*sites x STEPS x var+ohe
+
+        target = self._onehotencode(
+            self._get_target_data(data).drop("steps"), "target_roll"
+        )  # DATES*sites x STEPS x var+ohe
+
+        return historic, forecast, future, target
+
+    def _interpolate_1d(self, data):
+
+        for var in list(data.keys()):
+            data[var] = data[var].interpolate_na(
+                dim="date", method="linear", limit=self.max_consecutive_nan
+            )
+
+        return data
+
+    def engineer_arrays(self, data: xr.Dataset):
         """Create an `all_data` attribute which stores all the data
             DefaultDict[int, Dict[str, np.ndarray]]
         Create a `sample_lookup` attribute which stores the
             location & initialisation_date info.
             Dict[int, Tuple[str, pd.Timestamp]]
         """
-        # Timedelta objects describing horizons / seq_length
-        seq_length_history_td = pd.Timedelta(f"{self.seq_len}D")
-        # forecast_horizon_td = pd.Timedelta(f"{self.forecast_horizon}D")
-        future_horizon_td = pd.Timedelta(f"{self.future_horizon}D")
-        target_horizon_td = pd.Timedelta(f"{self.target_horizon}D")
 
         # initialise the dictionary storing all the data
         self.all_data: DefaultDict[int, Dict] = defaultdict(dict)
         self.sample_lookup: Dict[int, Tuple[str, pd.Timestamp]] = {}
 
-        # initialise the loop for building the data arrays
-        COUNTER = 0
-        NAN_COUNTER = 0
+        def normalise_func(arr):
+            return (arr - arr.mean()) / arr.std()
 
-        # TODO: is this definitely the time axis we want to loop through?
-        # get the initialisation dates for looping through the data
-        # self.forecast[self.forecast_initialisation_dim].values if self.forecast is not None else self.history["time"].values
-        forecast_init_times = self.history["time"].values
+        # maybe normalise
+        logger.info("soft data transforms - maybe normalise")
+        if self.normalise is not None:
+            for var in self.normalise:
+                data[var] = data[var].groupby("global_sites").map(normalise_func)
 
-        # TODO: what happens if the timeseries is not complete? i.e. missing dates
-        # TODO: what if all the spatial locations in a dataset are not there?
-        for sample in self.history[self.spatial_dim].values:
+        # mask nans by valid datetime
+        logger.info("soft data transforms - validate datetimes")
+        valid_dates = self.valid_datetimes(data)
 
-            # get the data for the sample
-            data_h = self.history.sel({self.spatial_dim: sample})
-            data_f = (
-                self.forecast.sel({self.spatial_dim: sample})
-                if self.forecast is not None
-                else None
-            )
-            # TODO: how to include the future data?
-            # data_ff = self.future.loc[np.isin(self.future[self.spatial_dim], sample)]
-            data_y = self.target.sel({self.spatial_dim: sample})
+        logger.info("soft data transforms - interpolate_1d")
+        data = self._interpolate_1d(data)
 
-            # create data samples for each initialisation_date
-            # history = self.seq_len days before the forecast
-            # target = forecast_horizon + future_horizon
-            pbar = tqdm(
-                forecast_init_times, desc=f"Building data for {sample} [{self.mode}]"
-            )
-            for forecast_init_time in pbar:
-                # init pbar
-                str_time = np.datetime_as_string(forecast_init_time, unit="h")
-                postfix_str = f"T: {str_time} -- nans: {NAN_COUNTER}"
-                pbar.set_postfix_str(postfix_str)
+        if self.ohe_or_multi == "multi":
+            raise NotImplementedError
+        elif self.ohe_or_multi == "ohe":
+            logger.info("soft data transforms - reshape with one-hot-encoding")
+            historic, forecast, future, targets = self._reshape_data_ohe(data)
 
-                # GET HISTORICAL DATA
-                history = self._get_historical_data(
-                    data_h=data_h,
-                    forecast_init_time=forecast_init_time,
-                    seq_length_td=seq_length_history_td,
-                )
+        idx = historic["date-site"].data[np.isin(historic["date"].data, valid_dates)]
 
-                # GET FORECAST DATA
-                fcast = self._get_forecast_data(
-                    data_f=data_f,
-                    forecast_init_time=forecast_init_time,
-                )
-
-                # GET TARGET DATA
-                target = self._get_target_data(
-                    data_y=data_y,
-                    forecast_init_time=forecast_init_time,
-                    horizon_td=target_horizon_td,
-                )
-
-                # GET FUTURE DATA
-                future = self._get_future_data(
-                    target=target,
-                    future_horizon_td=future_horizon_td,
-                )
-
-                # FEATURE ENGINEERING
-                # TODO: current assumption is that encoding_doy FOR ALL DATA (history, forecast, future)
-                history, fcast, future = self._encode_times(history, fcast, future)
-                if self.include_ohe:
-                    history, fcast, future = self._encode_location(
-                        history, fcast, future, sample=sample
-                    )
-
-                # SELECT FEATURES
-                #  (seq_len, len(history_variables))
-                history = history[self.history_variables]
-                #  (horizon, len(forecast_variables))
-                fcast = fcast[self.forecast_variables] if fcast is not None else None
-
-                # SAVE SIZES (for initialising the model later)
-                self.historical_input_size = history.shape[1]
-                self.forecast_input_size = (
-                    fcast.shape[1] if self.forecast is not None else 0
-                )
-                self.future_input_size = future.shape[1]
-
-                # SKIP NANS
-                # (y only in training period)
-                if self.mode == "train":
-                    if np.any(target.isnull()):
-                        NAN_COUNTER += 1
-                        continue
-
-                if self.forecast is not None:
-                    if np.any(fcast.isnull()):
-                        NAN_COUNTER += 1
-                        continue
-
-                if np.any(future.isnull()):
-                    NAN_COUNTER += 1
-                    continue
-
-                if np.any(history.isnull()):
-                    NAN_COUNTER += 1
-                    continue
-
-                if history.shape[0] != self.seq_len:
-                    # not enough history for that sample
-                    NAN_COUNTER += 1
-                    continue
-
-                if target.shape[0] != self.target_horizon:  # + 1
-                    NAN_COUNTER += 1
-                    continue
-
-                # SAVE ALL DATA to attribute
-                self.all_data[COUNTER] = {
-                    "x_f": fcast,
-                    "x_ff": future,
-                    "x_d": history,
-                    "y": target,
-                }
-                self.sample_lookup[COUNTER] = (sample, forecast_init_time)
-
-                COUNTER += 1
-
-        # save for calculation of length
-        self.n_samples = COUNTER
-        # save metadata for each sample
-        self.times = forecast_init_times
-
-        if self.cache:
-            # save metadata/check metadata (to check for match)
-            # cache to disk
-            # self.experiment_dir
-            # "sample_lookup.pkl"
-            # "all_data.pkl"
-            # assert False, "TODO: needs to implement cacheing of data?"
-            pass
-
-    def _get_historical_data(
-        self,
-        data_h: xr.Dataset,
-        forecast_init_time: pd.Timestamp,
-        seq_length_td: pd.Timedelta,
-    ) -> pd.DataFrame:
-        # GET HISTORICAL DATA
-        history_start_time = forecast_init_time - seq_length_td
-        history = data_h.sel(time=slice(history_start_time, forecast_init_time))
-        history = (
-            history.isel(time=slice(-self.seq_len, None))
-            .drop(self.spatial_dim)
-            .to_dataframe()
+        self.historic = (
+            historic.sel({"date-site": idx})
+            .to_array()
+            .transpose("date-site", "historic_roll", "variable")
+            .data
+        )
+        self.forecast = (
+            forecast.sel({"date-site": idx})
+            .to_array()
+            .transpose("date-site", "steps", "variable")
+            .data
+        )
+        self.future = (
+            future.sel({"date-site": idx})
+            .to_array()
+            .transpose("date-site", "steps", "variable")
+            .data
+        )
+        self.targets = (
+            targets.sel({"date-site": idx})
+            .to_array()
+            .transpose("date-site", "target_roll", "variable")
+            .data
         )
 
-        return history
+        logger.info(
+            f"soft data transforms - data shape - historic:{self.historic.shape}; forecast:{self.forecast.shape}; future:{self.future.shape}; targets:{self.targets.shape}"
+        )
+
+        # SAVE ALL DATA to attribute
+        logger.info("soft data transforms - build data Dictionary")
+        for ii, (date, site) in enumerate(idx):
+
+            self.all_data[ii] = {
+                "x_d": self.historic[ii, ...],
+                "x_f": self.forecast[ii, ...],
+                "x_ff": self.future[ii, ...],
+                "y": self.targets[ii, ...],
+            }
+
+            self.sample_lookup[ii] = (site, date)
+
+        self.n_samples = len(idx)
+
+    def _get_historic_data(
+        self,
+        data: xr.Dataset,
+    ) -> xr.Dataset:
+
+        data_h = xr.concat(
+            [
+                data[self.historic_variables]
+                .sel({"steps": np.timedelta64(0)})
+                .shift({"date": ii})
+                for ii in range(self.historical_seq_len)
+            ],
+            pd.TimedeltaIndex(
+                [
+                    timedelta(days=self.historical_seq_len - ii)
+                    for ii in range(self.historical_seq_len)
+                ],
+                name="historic_roll",
+            ),
+        )
+
+        return data_h.to_array().transpose(
+            "date", "global_sites", "variable", "historic_roll"
+        )
 
     def _get_forecast_data(
         self,
-        data_f: xr.Dataset,
-        forecast_init_time: pd.Timestamp,
-    ) -> Optional[pd.DataFrame]:
-        if self.forecast is not None:
-            try:
-                fcast = data_f.sel(
-                    {self.forecast_initialisation_dim: forecast_init_time}
-                )
-            except KeyError:
-                # that date is not available
-                return pd.DataFrame(
-                    {k: np.nan for k in self.forecast_variables},
-                    index=[forecast_init_time],
-                )
-            # Get the data UP TO horizon
-            fcast = fcast.isel(
-                {self.forecast_horizon_dim: slice(0, self.forecast_horizon)}
-            )
-            # rename self.forecast_horizon_dim -> time
-            forecast_times = (
-                fcast[self.forecast_initialisation_dim]
-                + fcast[self.forecast_horizon_dim]
-            ).values
-            fcast = fcast.rename({self.forecast_horizon_dim: "time"})
-            fcast["time"] = forecast_times
+        data: xr.Dataset,
+    ) -> xr.Dataset:
 
-            fcast = (
-                fcast.drop_vars(
-                    [self.forecast_initialisation_dim, "valid_time"], errors="ignore"
-                )
-                .drop(self.spatial_dim)
-                .to_dataframe()
-            )
-            return fcast
-        else:
-            return None
+        forecast_period = pd.TimedeltaIndex(
+            [timedelta(days=ii) for ii in range(1, self.forecast_horizon + 1)]
+        )
+
+        return (
+            data[self.forecast_variables]
+            .to_array()
+            .sel({"steps": forecast_period})
+            .transpose("date", "global_sites", "variable", "steps")
+        )
 
     def _get_future_data(
         self,
-        target: pd.DataFrame,
-        future_horizon_td: pd.Timedelta,
-    ) -> pd.DataFrame:
-        """[summary]
+        data: xr.Dataset,
+    ) -> xr.Dataset:
 
-        Args:
-            target (pd.DataFrame): [description]
-            future_horizon_td (pd.Timedelta): [description]
+        future_period = pd.TimedeltaIndex(
+            [
+                timedelta(days=ii)
+                for ii in range(self.forecast_horizon + 1, self.future_horizon + 1)
+            ]
+        )
 
-        Returns:
-            pd.DataFrame: DataFrame with time as index and empty columns. Populated later with encode_time
-        """
-        # TODO: how to pass in extra variables to future data?
-        # TODO: do you want to create the future data here? that way there's never missing data
-        # TODO: but the alternative is to be able to pass the future data into __init__()
-
-        # NOTE: drop the first because that is already included in the forecast
-        future_times = pd.date_range(
-            target.index.max() - future_horizon_td, target.index.max()
-        )[1:]
-        future = pd.DataFrame({"time": future_times}).set_index("time")
-
-        return future
+        return (
+            data[self.future_variables]
+            .to_array()
+            .sel({"steps": future_period})
+            .transpose("date", "global_sites", "variable", "steps")
+        )
 
     def _get_target_data(
         self,
-        data_y: xr.Dataset,
-        forecast_init_time: pd.Timestamp,
-        horizon_td: pd.Timedelta,
-    ) -> pd.DataFrame:
-        # time slice from [initialisation_date: forecast_horizon + future_horizon]
-        target = data_y[self.target_var].sel(
-            time=slice(forecast_init_time, forecast_init_time + horizon_td)
-        )
-        target = (
-            target.isel(time=slice(-self.target_horizon, None))  # target
-            .drop(self.spatial_dim)
-            .to_dataframe()
-        )
-        return target
+        data: xr.Dataset,
+    ) -> xr.Dataset:
 
-    def _encode_times(
-        self,
-        history: xr.Dataset,
-        fcast: Optional[xr.Dataset],
-        future: xr.Dataset,
-    ) -> Tuple[pd.DataFrame, ...]:
-        if self.encode_doy:
-            if fcast is not None:
-                fcast["doy_sin"], fcast["doy_cos"] = create_doy(
-                    list(fcast.index.dayofyear)
-                )
-            history["doy_sin"], history["doy_cos"] = create_doy(
-                list(history.index.dayofyear)
-            )
-            future["doy_sin"], future["doy_cos"] = create_doy(
-                list(future.index.dayofyear)
-            )
+        data_y = xr.concat(
+            [
+                data[self.target_var]
+                .sel({"steps": np.timedelta64(0)})
+                .shift({"date": ii})
+                for ii in range(self.forecast_horizon + self.future_horizon + 1)
+            ],
+            pd.TimedeltaIndex(
+                [
+                    timedelta(days=ii)
+                    for ii in range(self.forecast_horizon + self.future_horizon + 1)
+                ],
+                name="target_roll",
+            ),
+        )
 
-        return history, fcast, future
+        return data_y.to_array().transpose(
+            "date", "global_sites", "variable", "target_roll"
+        )
 
     @staticmethod
     def _merge_dataframe_of_one_hot_encoded_data(
@@ -519,96 +435,3 @@ def print_instance(dd: FcastDataset, instance: int):
             if not isinstance(dd[instance][k], dict)
         ],
     )
-
-
-if __name__ == "__main__":
-    from h2ox.ai.scripts.utils import load_zscore_data
-
-    # parameters for the yaml file
-    ENCODE_DOY = True
-    SEQ_LEN = 60
-    FUTURE_HORIZON = 76
-    SITE = "kabini"
-    TARGET_VAR = "volume_bcm"
-    HISTORY_VARIABLES = ["tp", "t2m"]
-    FORECAST_VARIABLES = ["tp", "t2m"]
-    FUTURE_VARIABLES = []
-    BATCH_SIZE = 32
-    TRAIN_END_DATE = "2012-01-01"
-    TRAIN_START_DATE = "2011-01-01"
-    HIDDEN_SIZE = 64
-    NUM_LAYERS = 1
-    DROPOUT = 0.4
-    NUM_WORKERS = 1
-    N_EPOCHS = 10
-    RANDOM_VAL_SPLIT = True
-
-    # load data
-    data_dir = Path(Path.cwd() / "data")
-    target, history, forecast = load_zscore_data(data_dir)
-
-    # create future data (x_ff)
-    # date and location columns
-    # min_date = target["time"].min().values
-    # max_date = target["time"].max().values + (FUTURE_HORIZON * pd.Timedelta("1D"))
-    # future_date_index = pd.date_range(min_date, max_date, freq="D")
-    # future = pd.concat(
-    #     [
-    #         pd.DataFrame({"time": future_date_index, "location": loc})
-    #         for loc in target.location.values
-    #     ]
-    # ).set_index("time")
-
-    # feature engineering
-    # doys_sin, doys_cos = encode_doys(future.index.dayofyear)
-    # future["doy_sin"] = doys_sin[0]
-    # future["doy_cos"] = doys_cos[0]
-
-    # # select site
-    site_target = target.sel(location=[SITE])
-    site_history = history.sel(location=[SITE])
-    site_forecast = forecast.sel(location=[SITE])
-
-    # get train data
-    train_target = site_target.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
-    train_history = site_history.sel(time=slice(TRAIN_START_DATE, TRAIN_END_DATE))
-    train_forecast = site_forecast.sel(
-        initialisation_time=slice(TRAIN_START_DATE, TRAIN_END_DATE)
-    )
-
-    # load dataset
-    dd = FcastDataset(
-        target=train_target,  # target,
-        history=train_history,  # history,
-        forecast=None,  # forecast,
-        encode_doy=ENCODE_DOY,
-        historical_seq_len=SEQ_LEN,
-        future_horizon=FUTURE_HORIZON,
-        target_var=TARGET_VAR,
-        mode="train",
-        history_variables=HISTORY_VARIABLES,
-        forecast_variables=FORECAST_VARIABLES,
-    )
-
-    print([(k, dd[0][k].shape) for k in dd[0].keys() if not isinstance(dd[0][k], dict)])
-
-    # load dataloader
-    # get individual/batched samples
-
-    final_t = dd[0]["x_d"][-1, :]
-    first_t = dd[0]["y"][0, :]
-    location = dd.get_meta(0)[0]
-    time = dd.get_meta(0)[1]
-    # check numbers match
-    print("History")
-    print(final_t[:2])
-    print(history.sel(location=location, time=time).to_array().values)
-    print()
-    print("Target")
-    print(first_t)
-    print(target.sel(location=location, time=time).to_array().values)
-
-    data_y = site_target
-    target_horizon_td = pd.Timedelta(f"{dd.target_horizon}D")
-    dd._get_target_data(data_y, forecast_init_time=time, horizon_td=target_horizon_td)
-    forecast.sel(location=location, initialisation_time=time)
