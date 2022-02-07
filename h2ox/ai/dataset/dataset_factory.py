@@ -1,3 +1,4 @@
+from typing import Dict, Any
 import os
 from datetime import datetime
 from pydoc import locate
@@ -11,7 +12,7 @@ from torch.utils.data import Dataset
 class DatasetFactory:
     def __init__(
         self,
-        cfg,
+        cfg: Dict[str, Any],
     ):
         self.cfg = cfg["data_parameters"]
         self.ptds_cfg = cfg["dataset_parameters"]
@@ -59,8 +60,7 @@ class DatasetFactory:
         return data
 
     def build_dataset(self):
-
-        # if yes -> buil
+        # if yes -> build
         if self.cfg["cache_path"] is not None:
             logger.info(f'Checking cache at {self.cfg["cache_path"]}')
             if self.check_cache():
@@ -81,21 +81,22 @@ class DatasetFactory:
 
         return ptdataset
 
-    def _build_data(self, merge=True):
+    def _build_data(self, merge: bool = True):
 
         sdt = datetime.strptime(self.cfg["start_data_date"], "%Y-%m-%d")
         edt = datetime.strptime(self.cfg["end_data_date"], "%Y-%m-%d")
 
         arrays = []
 
-        for kk, vv in self.cfg["data_units"].items():
-            data_unit_instance = locate(vv["class"])()
+        # data_unit_options: Dict[str, Any]
+        for data_unit_key, data_unit_options in self.cfg["data_units"].items():
+            data_unit_instance = locate(data_unit_options["class"])()
             array = data_unit_instance.build(
                 start_datetime=sdt,
                 end_datetime=edt,
-                site_mapper=self.get_site_mapper(vv["site_keys"], self.cfg["sites"]),
-                data_unit_name=kk,
-                **vv,
+                site_mapper=self.get_site_mapper(data_unit_options["site_keys"], self.cfg["sites"]),
+                data_unit_name=data_unit_key,
+                **data_unit_options,
             )
             arrays.append(array)
 
@@ -114,3 +115,20 @@ class DatasetFactory:
         ptdataset = PTDataset(data, **self.ptds_cfg)
 
         return ptdataset
+
+
+if __name__ == "__main__":
+    # TODO: write some minimal test of this code
+    from ruamel.yaml import YAML
+    from pathlib import Path
+
+    yml_path = Path("conf.yaml")
+    with yml_path.open('r') as fp:
+        yaml = YAML(typ="safe")
+        cfg = yaml.load(fp)
+
+    dsf = DatasetFactory(cfg)
+    dsf.build_dataset()
+    assert False
+
+    
