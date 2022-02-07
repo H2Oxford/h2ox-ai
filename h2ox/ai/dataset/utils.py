@@ -65,7 +65,8 @@ def assymetric_boolean_dilate(
     flip_idx = np.unique(np.concatenate([add_left_idx, add_right_idx]))
     flip_idx = flip_idx[(flip_idx >= 0) & (flip_idx < arr.shape[0])]
 
-    arr[flip_idx] = target
+    if flip_idx.shape[0] > 0:
+        arr[flip_idx] = target
 
     return arr
 

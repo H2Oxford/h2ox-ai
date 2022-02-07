@@ -133,8 +133,10 @@ class ZRSpatialDataUnit(DataUnit):
         site_col: str,
         datetime_col: str,
         z_address: str,
+        start_step: int,
+        end_step: int,
+        step_size: int,
         steps_key: Optional[str],
-        steps: Optional[List[int]],
         zarr_mapper: Optional[str],
         lat_col: str = "latitude",
         lon_col: str = "longitude",
@@ -161,6 +163,11 @@ class ZRSpatialDataUnit(DataUnit):
             xr.DataArray
 
         """
+
+        if all([(ii is not None) for ii in [start_step, end_step, step_size]]):
+            steps = range(start_step, end_step, step_size)
+        else:
+            steps = None
 
         logger.info(
             f"{data_unit_name} - Building; reducing {z_address} over {gdf_path}"
@@ -226,12 +233,14 @@ class ZRSpatialDataUnit(DataUnit):
 
         # check if steps exists
         if steps_key not in array.coords.keys():
-            steps_idx = pd.Series([timedelta(days=ii) for ii in [0]], name="steps")
+            steps_idx = pd.TimedeltaIndex(
+                [timedelta(days=ii) for ii in [0]], name="steps"
+            )
             array = array.expand_dims({steps_key: steps_idx})
         else:
             if steps is not None:
                 array = array.sel(
-                    {steps_key: pd.Series([timedelta(days=ii) for ii in steps])}
+                    {steps_key: pd.TimedeltaIndex([timedelta(days=ii) for ii in steps])}
                 )
 
         # rename for consistency
@@ -293,7 +302,7 @@ class BQDataUnit(DataUnit):
         # execute query
         df = client.query(Q).result().to_dataframe()
 
-        df[datetime_col] = pd.to_datetime(df[datetime_col]).dt.floor("d")
+        df[datetime_col] = pd.to_datetime(df[datetime_col]).dt.floor("D")
 
         df["global_sites"] = df[site_col].map(site_mapper)
 
@@ -317,8 +326,11 @@ class BQDataUnit(DataUnit):
         remap_keys[datetime_col] = "date"  # set a common date name
         array = array.rename(**remap_keys)
 
+        # reset datetime dtype
+        array["date"] = pd.to_datetime(array["date"])
+
         # add steps dimension
-        steps_idx = pd.Series([timedelta(days=ii) for ii in [0]], name="steps")
+        steps_idx = pd.TimedeltaIndex([timedelta(days=ii) for ii in [0]], name="steps")
         array = array.expand_dims({"steps": steps_idx})
 
         return array
@@ -361,7 +373,7 @@ class SynthTrigDoY(DataUnit):
             idx = pd.date_range(start_datetime, end_datetime, freq="d")
             idx.name = "date"
 
-            cols = pd.Series([timedelta(days=ii) for ii in steps], name="steps")
+            cols = pd.TimedeltaIndex([timedelta(days=ii) for ii in steps], name="steps")
 
             df = pd.DataFrame(index=idx, columns=cols)
 

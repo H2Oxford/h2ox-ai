@@ -13,7 +13,8 @@ class DatasetFactory:
         self,
         cfg,
     ):
-        pass
+        self.cfg = cfg["data_parameters"]
+        self.ptds_cfg = cfg["dataset_parameters"]
 
     @staticmethod
     def get_site_mapper(data_unit_site_keys, global_site_keys):
@@ -27,9 +28,7 @@ class DatasetFactory:
             # load cfg
             root, ext = os.path.splitext(self.cfg["cache_path"])
 
-            cache_cfg = yaml.load(
-                open(os.path.join(root, ".yaml")), Loader=yaml.SafeLoader
-            )
+            cache_cfg = yaml.load(open(root + ".yaml"), Loader=yaml.SafeLoader)
 
             if self.cfg == cache_cfg:
                 logger.info("Cache verified. Loading...")
@@ -45,7 +44,11 @@ class DatasetFactory:
 
         root, ext = os.path.splitext(self.cfg["cache_path"])
 
-        yaml.dump(self.cfg, open(os.path.join(root, ".yaml"), "w"))
+        # dump cfg
+        yaml.dump(self.cfg, open(root + ".yaml", "w"))
+
+        # dump data
+        data.to_netcdf(root + ".nc")
 
         return True
 
@@ -56,8 +59,6 @@ class DatasetFactory:
         return data
 
     def build_dataset(self):
-
-        # need to build?
 
         # if yes -> buil
         if self.cfg["cache_path"] is not None:
@@ -80,10 +81,10 @@ class DatasetFactory:
 
         return ptdataset
 
-    def _build_data(self):
+    def _build_data(self, merge=True):
 
-        sdt = datetime.strptime(self.cfg["end-datetime"], "%Y-%m-%d")
-        edt = datetime.strptime(self.cfg["start-datetime"], "%Y-%m-%d")
+        sdt = datetime.strptime(self.cfg["start_data_date"], "%Y-%m-%d")
+        edt = datetime.strptime(self.cfg["end_data_date"], "%Y-%m-%d")
 
         arrays = []
 
@@ -98,11 +99,18 @@ class DatasetFactory:
             )
             arrays.append(array)
 
-        return xr.merge(arrays)
+        if merge:
+            return xr.merge(arrays)
+        else:
+            return arrays
 
     def _build_ptdataset(
         self,
         data: xr.Dataset,
     ) -> Dataset:
 
-        return data
+        PTDataset = locate(self.ptds_cfg["pytorch_dataset"])
+
+        ptdataset = PTDataset(data, **self.ptds_cfg)
+
+        return ptdataset
