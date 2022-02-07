@@ -89,13 +89,13 @@ class DatasetFactory:
         arrays = []
 
         # data_unit_options: Dict[str, Any]
-        for data_unit_key, data_unit_options in self.cfg["data_units"].items():
+        for data_unit_name, data_unit_options in self.cfg["data_units"].items():
             data_unit_instance = locate(data_unit_options["class"])()
             array = data_unit_instance.build(
                 start_datetime=sdt,
                 end_datetime=edt,
                 site_mapper=self.get_site_mapper(data_unit_options["site_keys"], self.cfg["sites"]),
-                data_unit_name=data_unit_key,
+                data_unit_name=data_unit_name,
                 **data_unit_options,
             )
             arrays.append(array)
