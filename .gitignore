@@ -3,6 +3,7 @@
 experiments/**/*.txt
 experiments/**/*.json
 experiments/_sources
+data/cache.nc
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

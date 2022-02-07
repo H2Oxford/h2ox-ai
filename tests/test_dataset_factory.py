@@ -32,6 +32,7 @@ if __name__ == "__main__":
     targets_cfg = get_single_dataunit_dict(cfg, "targets")
     
     # check the dataset construction for each data unit
-    for cfg_ in [targets_cfg, doy_cfg, forecast_cfg, history_cfg]:
+    # [targets_cfg, doy_cfg, forecast_cfg, history_cfg]
+    for cfg_ in [targets_cfg]:
         dsf = DatasetFactory(cfg_)
-        dsf.build_dataset()
+        dsf._build_data()
