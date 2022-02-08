@@ -33,6 +33,11 @@ if __name__ == "__main__":
     
     # check the dataset construction for each data unit
     # [targets_cfg, doy_cfg, forecast_cfg, history_cfg]
-    for cfg_ in [targets_cfg]:
+    for cfg_ in [doy_cfg]:
+        cfg_type = [str(k) for k in cfg_["data_parameters"]["data_units"].keys()][0]
         dsf = DatasetFactory(cfg_)
-        dsf._build_data()
+        arrays = dsf._build_data()
+        
+        if cfg_type == "doy":
+            assert False
+        
