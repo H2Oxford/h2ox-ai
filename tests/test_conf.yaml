@@ -1,0 +1,127 @@
+# Experiment Parameters
+name: "test"
+path_to_runs_folder:
+
+# dataset parameters - paramters to the PyTorch dataset, not requiring data cache refresh
+dataset_parameters:
+    pytorch_dataset: h2ox.ai.dataset.dataset.FcastDataset
+    normalise: ["historic_t2m","historic_tp","forecast_tp", "forecast_t2m","targets_WATER_VOLUME"]
+    historical_seq_len: 60
+    forecast_horizon: 14
+    future_horizon: 76
+    include_doy: true
+    ohe_or_multi: "ohe"
+    max_consecutive_nan: 15
+    select_sites:
+      - "kabini"
+      - "harangi"
+      - "bhadra"
+      - "hemavathy"
+      - "lower_bhawani"
+      - "krishnaraja_sagar"
+    target_var: ["targets_WATER_VOLUME"]
+    historic_variables: ["historic_t2m","historic_tp","targets_WATER_VOLUME","doy_cos"]
+    forecast_variables: ["forecast_tp", "forecast_t2m","doy_cos"]
+    future_variables: ["doy_cos"]
+    train_start_date: "2010-01-01"
+    train_end_date: "2017-12-31"
+    val_start_date: "2018-01-01"
+    val_end_date: "2019-12-31"
+    test_start_date: "2020-01-01"
+    test_end_date: "2022-01-01"
+
+# data parameters - build/load a cached dataset
+data_parameters:
+    cache_path: /Users/tommylees/github/h2ox/h2ox-ai/data/test_data.nc  # /home/jupyter/h2ox-ai/data/test_data.nc
+    sites:
+      - "kabini"
+      - "harangi"
+      - "bhadra"
+      - "hemavathy"
+      - "lower_bhawani"
+      - "krishnaraja_sagar"
+    start_data_date: "2010-01-01"
+    end_data_date: "2022-01-01"
+    data_units:
+      doy:
+        class: h2ox.ai.dataset.data_units.SynthTrigDoY
+        site_keys:
+          - kabini
+          - harangi
+          - bhadra
+          - hemavathy
+          - lower_bhawani
+          - krishnaraja_sagar
+        sin_or_cos: [sin,cos]
+        start_step: 0
+        end_step: 90
+        step_size: 1
+      forecast:
+        class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+        variable_keys: [t2m,tp]
+        gdf_path: /Users/tommylees/github/h2ox/h2ox-ai/data/basins.geojson  # /home/jupyter/h2ox-ai/data/basins.geojson
+        site_col: DAM_NAME
+        site_keys:
+          - kabini
+          - harangi
+          - bhadra
+          - hemavathy
+          - lower_bhawani
+          - krishnaraja_sagar
+        datetime_col: time
+        z_address: gs://oxeo-forecasts/ecmwf-forecast
+        steps_key: step
+        start_step: 0
+        end_step: 15
+        step_size: 1
+        zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+        lat_col: latitude
+        lon_col: longitude
+      historic:
+        class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+        variable_keys: [t2m,tp]
+        gdf_path: /Users/tommylees/github/h2ox/h2ox-ai/data/basins.geojson  # /home/jupyter/h2ox-ai/data/basins.geojson
+        site_col: DAM_NAME
+        site_keys:
+          - kabini
+          - harangi
+          - bhadra
+          - hemavathy
+          - lower_bhawani
+          - krishnaraja_sagar
+        datetime_col: time
+        z_address: gs://oxeo-era5/build
+        steps_key: null
+        start_step: 0
+        end_step: 15
+        step_size: 1
+        zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+        lat_col: latitude
+        lon_col: longitude
+      targets:
+        class: h2ox.ai.dataset.data_units.BQDataUnit
+        variable_keys: [DATETIME, WATER_VOLUME, RESERVOIR_NAME]
+        site_col: RESERVOIR_NAME
+        datetime_col: DATETIME
+        bq_address: oxeo-main.wave2web.reservoir-data
+        site_keys:
+          - kabini
+          - harangi
+          - bhadra
+          - hemavathy
+          - lower_bhawani
+          - krishnaraja_sagar
+model_parameters:
+    # Model Parameters
+    hidden_size: 64
+    num_layers: 1
+    dropout: 0.4
+
+training_parameters:
+    # Training Parameters
+    num_workers: 4
+    random_val_split: false
+    eval_test: false
+    batch_size: 100
+    n_epochs: 100
+    validate_every_n: 3
