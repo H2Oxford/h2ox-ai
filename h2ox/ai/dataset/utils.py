@@ -23,14 +23,28 @@ def null_mapper():
 def group_consecutive_nans(
     da: xr.DataArray,
     variable_name: str,
-    outer_groupby_coords: str,
-    longitudinal_coord: str,
+    outer_groupby_coords: str = "global_sites",
+    time_coord: str = "date",
 ) -> xr.DataArray:
+    """TODO: lucas can you complete the docstring [summary]
+    - what are we grouping by?
+    - what dimensions are we collapsing
+
+    Args:
+        da (xr.DataArray): [description]
+        variable_name (str): [description]
+        outer_groupby_coords (str): [description]
+        time_coord (str): [description]
+
+    Returns:
+        xr.DataArray: [description]
+    """
     cons_nan_da = (
-        (da.isnull() != da.isnull().shift({longitudinal_coord: 1}, fill_value=np.nan))
-        .cumsum(dim=longitudinal_coord)
+        (da.isnull() != da.isnull().shift({time_coord: 1}, fill_value=np.nan))
+        .cumsum(dim=time_coord)
         .groupby(outer_groupby_coords)
         .map(
+            # groupby all remaning dims (date, steps[horizon])
             lambda g: g.groupby(...).count().sel({variable_name: g}).drop(variable_name)
         )
     )
@@ -44,14 +58,24 @@ def assymetric_boolean_dilate(
     arr: np.ndarray,
     left_dilation: int,
     right_dilatation: int,
-    target: int,
+    target: Union[bool, int],
 ) -> np.ndarray:
+    """[summary]TODO: lucas can you complete the docstring 
 
+    Args:
+        arr (np.ndarray): array of boolean values of length `date`
+        left_dilation (int): `historical_seq_length`
+        right_dilatation (int): `target_horizon`
+        target Union[bool, int]: What value are we trying to find in the `arr`?
+
+    Returns:
+        np.ndarray: [description]
+    """
     # get left and right edges where boolean mask changes sign
-    left_edge = np.convolve(arr == target, np.array([1, -1]), mode="same")  # left_edge
-    right_edge = np.convolve(arr[::-1] == target, np.array([1, -1]), mode="same")[
-        ::-1
-    ]  # right edge
+    # left_edge
+    left_edge = np.convolve(arr == target, np.array([1, -1]), mode="same")
+    # right edge
+    right_edge = np.convolve(arr[::-1] == target, np.array([1, -1]), mode="same")[::-1]
 
     # get new indices to change bool sign
     add_left_idx = np.array(
@@ -66,6 +90,7 @@ def assymetric_boolean_dilate(
     flip_idx = flip_idx[(flip_idx >= 0) & (flip_idx < arr.shape[0])]
 
     if flip_idx.shape[0] > 0:
+        # reassign values in boolean array
         arr[flip_idx] = target
 
     return arr
@@ -95,6 +120,14 @@ def encode_doys(
 
 
 def encode_array_of_datetimes_to_sin_cos(dates: np.ndarray) -> Tuple[np.ndarray, ...]:
+    """Return two arrays of sin, cos encoding of the dates in the array
+
+    Args:
+        dates (np.ndarray): Input array of datetimes[64]
+
+    Returns:
+        Tuple[np.ndarray, ...]: two output arrays of sin, cos encodings [float64]
+    """
     shape = dates.shape
     dayofyear = np.array(pd.to_datetime(dates.flatten()).dayofyear).reshape(shape)
     doys_sin, doys_cos = encode_doys(dayofyear)
@@ -133,7 +166,7 @@ def calculate_errors(
     # smp = np.unique(preds["sample"])[0]
     all_sample_errors = []
     for smp in np.unique(preds["sample"]):
-        pp = preds.sel(initialisation_time=preds["sample"] == smp).drop("sample")
+        pp = preds.sel({time_dim: preds["sample"] == smp}).drop("sample")
 
         # TODO: use another library for these scores, xs dependency pip isntall hangs?
         rmse = (
@@ -168,7 +201,7 @@ def calculate_errors(
 def normalize_data(
     ds: xr.Dataset,
     static_or_global: bool = False,
-    time_dim: str = "time",
+    time_dim: str = "date",
     mean_: Optional[xr.Dataset] = None,
     std_: Optional[xr.Dataset] = None,
 ) -> Tuple[xr.Dataset, Tuple[xr.Dataset, xr.Dataset]]:
@@ -199,6 +232,7 @@ def unnormalize_preds(
     sample: str,
     sample_dim: str = "location",
 ) -> xr.Dataset:
+    # TODO: fix all naming conventions
     if "sample" not in preds.coords:
         preds = preds.assign_coords(sample=preds["sample"])
     # (Y * std) + mean
