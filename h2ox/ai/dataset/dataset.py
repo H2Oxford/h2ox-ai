@@ -4,6 +4,7 @@ from typing import DefaultDict, Dict, List, Optional, Tuple, Union
 from dask.array import Array
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 import torch
 import xarray as xr
 from loguru import logger
@@ -167,11 +168,11 @@ class FcastDataset(Dataset):
         return historic, forecast, future, target
 
     def _interpolate_1d(self, data):
-
         for var in list(data.keys()):
-            data[var] = data[var].interpolate_na(
-                dim="date", method="linear", limit=self.max_consecutive_nan
-            )
+            if is_numeric_dtype(data[var]):
+                data[var] = data[var].interpolate_na(
+                    dim="date", method="linear", limit=self.max_consecutive_nan
+                )
 
         return data
 
