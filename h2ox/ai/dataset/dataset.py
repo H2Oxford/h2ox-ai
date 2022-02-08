@@ -1,9 +1,10 @@
 from collections import defaultdict
 from datetime import timedelta
 from typing import DefaultDict, Dict, List, Optional, Tuple, Union
-
+from dask.array import Array
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 import torch
 import xarray as xr
 from loguru import logger
@@ -70,7 +71,6 @@ class FcastDataset(Dataset):
         total_str += "------------\n"
         total_str += "\n"
         total_str += f"N Samples: {self.__len__()}\n"
-        # total_str += f"Dataset: {self.mode}\n"
         total_str += f"target: {self.target_var}\n"
         total_str += f"historic_variables: {self.historic_variables}\n"
         total_str += f"forecast_variables: {self.forecast_variables}\n"
@@ -168,11 +168,11 @@ class FcastDataset(Dataset):
         return historic, forecast, future, target
 
     def _interpolate_1d(self, data):
-
         for var in list(data.keys()):
-            data[var] = data[var].interpolate_na(
-                dim="date", method="linear", limit=self.max_consecutive_nan
-            )
+            if is_numeric_dtype(data[var]):
+                data[var] = data[var].interpolate_na(
+                    dim="date", method="linear", limit=self.max_consecutive_nan
+                )
 
         return data
 
@@ -418,8 +418,7 @@ class FcastDataset(Dataset):
             "index": np.array([idx]),
         }
         
-        # TODO: lucas have you purposefully removed meta?
-        # data["meta"] = meta
+        data["meta"] = meta
 
         # CONVERT TO torch.Tensor OBJECTS
         for key in data.keys():
