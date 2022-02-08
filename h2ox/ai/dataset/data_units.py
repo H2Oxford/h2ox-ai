@@ -326,7 +326,7 @@ class BQDataUnit(DataUnit):
         array = array.rename(**remap_keys)
 
         # reset datetime dtype
-        array["date"] = pd.to_datetime(array["date"])
+        array["date"] = pd.to_datetime(array["date"].data)
 
         # add steps dimension
         steps_idx = pd.TimedeltaIndex([timedelta(days=ii) for ii in [0]], name="steps")
