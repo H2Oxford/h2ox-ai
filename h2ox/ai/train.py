@@ -327,6 +327,7 @@ def train_validation_split(
     else:
         # SEQUENTIAL = train from 1:N; validation from N:-1
         # (NOTE: INDEXED BY TIME NOT SPACE - first sort the index_df by time)
+        # TODO: pass in date objects to slice the dataset appropriately
         index_df = train_dataset._get_meta_dataframe()
         index_df = index_df.sort_values(time_dim)
         train_indexes = index_df.index[:train_size]
