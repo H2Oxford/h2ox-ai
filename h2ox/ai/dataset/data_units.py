@@ -9,6 +9,7 @@ import pandas as pd
 import xarray as xr
 from google.cloud import bigquery
 from loguru import logger
+from dask.diagnostics import ProgressBar
 
 from h2ox.ai.dataset.xr_reducer import XRReducer
 
@@ -199,18 +200,16 @@ class ZRSpatialDataUnit(DataUnit):
         # map the zxr
         zx_arr = xr.open_zarr(z_mapper(z_address))
 
-        reduced_var_arrays = {}
-
+        # reduce the xarray object for each variable - geometry
+        reduced_var_arrays: Dict[str, xr.DataArray] = {}
         for variable in variable_keys:
-
             reduced_geom_arrays = {}
-
             ds = XRReducer(
                 array=zx_arr[variable], lat_variable=lat_col, lon_variable=lon_col
             )
 
+            # for each geometry in the gdf
             for idx, row in gdf.loc[gdf.index.isin(chosen_sites)].iterrows():
-
                 reduced_geom_arrays[idx] = ds.reduce(
                     row["geometry"], start_datetime, end_datetime
                 )
@@ -231,12 +230,14 @@ class ZRSpatialDataUnit(DataUnit):
             steps_key = "steps"
 
         # check if steps exists
-        if steps_key not in array.coords.keys():
+        if steps_key not in [coord for coord in array.coords]:
+            # create a 0th step
             steps_idx = pd.TimedeltaIndex(
                 [timedelta(days=ii) for ii in [0]], name="steps"
             )
             array = array.expand_dims({steps_key: steps_idx})
         else:
+            # convert integer steps into TimeDelta objects 
             if steps is not None:
                 array = array.sel(
                     {steps_key: pd.TimedeltaIndex([timedelta(days=ii) for ii in steps])}
@@ -244,6 +245,13 @@ class ZRSpatialDataUnit(DataUnit):
 
         # rename for consistency
         array = array.rename({datetime_col: "date", steps_key: "steps"})
+        
+        # Compute the dask objects and track progress via progress bar
+        logger.info(f"{data_unit_name} - Dask --> In Memory;")
+        pbar = ProgressBar()
+        pbar.register()
+        array = array.compute()
+        pbar.unregister()
 
         return array
 
