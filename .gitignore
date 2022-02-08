@@ -4,6 +4,7 @@ experiments/**/*.txt
 experiments/**/*.json
 experiments/_sources
 data/cache.nc
+data/cache.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
