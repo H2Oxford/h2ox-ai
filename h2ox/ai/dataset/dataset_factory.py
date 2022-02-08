@@ -1,12 +1,25 @@
-from typing import Dict, Any
+from typing import Dict, Any, Union
 import os
 from datetime import datetime
 from pydoc import locate
-
+import collections
+from pathlib import Path
 import xarray as xr
 import yaml
 from loguru import logger
 from torch.utils.data import Dataset
+
+
+# def convert_pathlib_opts_to_str(data: Dict[str, Union[Any, Dict]]):
+#     # https://stackoverflow.com/a/1254499/9940782
+#     if isinstance(data, Path):
+#         return data.as_posix()
+#     elif isinstance(data, collections.Mapping):
+#         return dict(map(convert, data.iteritems()))
+#     elif isinstance(data, collections.Iterable):
+#         return type(data)(map(convert, data))
+#     else:
+#         return data
 
 
 class DatasetFactory:
@@ -35,7 +48,7 @@ class DatasetFactory:
                 logger.info("Cache verified. Loading...")
                 return True
             else:
-                logger.info("Cache doesnt match spec. Rebuilding data.")
+                logger.info("Cache does not match spec. Rebuilding data.")
                 return False
         else:
             logger.info("Cache does not exists, building data.")
@@ -46,6 +59,7 @@ class DatasetFactory:
         root, ext = os.path.splitext(self.cfg["cache_path"])
 
         # dump cfg
+        # self.cfg = convert_pathlib_opts_to_str(self.cfg)
         yaml.dump(self.cfg, open(root + ".yaml", "w"))
 
         # dump data
@@ -59,7 +73,7 @@ class DatasetFactory:
 
         return data
 
-    def build_dataset(self):
+    def build_dataset(self) -> Dataset:
         # if yes -> build
         if self.cfg["cache_path"] is not None:
             logger.info(f'Checking cache at {self.cfg["cache_path"]}')
