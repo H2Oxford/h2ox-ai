@@ -31,6 +31,8 @@ class FcastDataset(Dataset):
         max_consecutive_nan: int,
         ohe_or_multi: str,
         normalise: Optional[List[str]],
+        time_dim: str = "date",
+        horizon_dim: str = "steps",
         **kwargs,
     ):
         # TODO: error and var checking
@@ -40,6 +42,8 @@ class FcastDataset(Dataset):
         self.historic_variables = historic_variables
         self.forecast_variables = forecast_variables
         self.future_variables = future_variables
+        self.time_dim = time_dim
+        self.horizon_dim = horizon_dim
 
         # soft data and filtering rules
         self.normalise = normalise
@@ -66,12 +70,12 @@ class FcastDataset(Dataset):
         total_str += "------------\n"
         total_str += "\n"
         total_str += f"N Samples: {self.__len__()}\n"
-        total_str += f"Dataset: {self.mode}\n"
+        # total_str += f"Dataset: {self.mode}\n"
         total_str += f"target: {self.target_var}\n"
-        total_str += f"history_variables: {self.history_variables}\n"
+        total_str += f"historic_variables: {self.historic_variables}\n"
         total_str += f"forecast_variables: {self.forecast_variables}\n"
-        total_str += f"future_variables: {self.forecast_variables}\n"
-        total_str += f"seq_len: {self.seq_len}D\n"
+        total_str += f"future_variables: {self.future_variables}\n"
+        total_str += f"historical_seq_len: {self.historical_seq_len}D\n"
         total_str += f"future_horizon: {self.future_horizon}\n"
         total_str += f"forecast_horizon: {self.forecast_horizon}\n"
         total_str += f"target_horizon: {self.target_horizon}\n"
@@ -85,8 +89,8 @@ class FcastDataset(Dataset):
 
         # time and space dimensions
         meta_df = self._get_meta_dataframe()
-        tmin = pd.Timestamp(meta_df["initialisation_time"].min())
-        tmax = pd.Timestamp(meta_df["initialisation_time"].max())
+        tmin = pd.Timestamp(meta_df[self.time_dim].min())
+        tmax = pd.Timestamp(meta_df[self.time_dim].max())
         total_str += f"PERIOD: {tmin}: {tmax}\n"
         total_str += f"LOCATIONS: {meta_df['location'].unique()}\n"
 
@@ -96,28 +100,29 @@ class FcastDataset(Dataset):
 
         # first filter consecutive nans above a certain threshold (for corrupt data, etc.)
         dd = {}
-        for var in list(data.keys()):
+        for var in list(data.data_vars):
 
             cons_nan = group_consecutive_nans(
                 da=data[var],
                 variable_name=var,
                 outer_groupby_coords="global_sites",
-                longitudinal_coord="date",
+                time_coord=self.time_dim,
             )
             dd[var] = cons_nan
 
+        # find any sites/variables with more than max_consecutive_nan consecutive nans
+        # TODO tommy: if you select only the first horizon why do you calculate over all?
         consecutive_nan_da = (
             (xr.merge(dd.values()) > self.max_consecutive_nan)
-            .isel({"steps": 0})
+            .isel({self.horizon_dim: 0})
             .to_array()
             .any(dim=("variable", "global_sites"))
         )
 
-        dates = consecutive_nan_da["date"].data
+        dates = consecutive_nan_da[self.time_dim].data
 
         consecutive_nan_arr = consecutive_nan_da.data
-
-        # dialate this boolean mask for accomodate historic and future sequence length
+        # dialate this boolean mask to accomodate historic and future sequence length
         consecutive_nan_arr = assymetric_boolean_dilate(
             arr=consecutive_nan_arr,
             left_dilation=self.historical_seq_len,
@@ -387,7 +392,7 @@ class FcastDataset(Dataset):
     def _get_meta_dataframe(self) -> pd.DataFrame:
         return pd.DataFrame(
             self.sample_lookup.values(), index=self.sample_lookup.keys()
-        ).rename({0: "location", 1: "initialisation_time"}, axis=1)
+        ).rename({0: "location", 1: self.time_dim}, axis=1)
 
     def __getitem__(self, idx) -> Dict[str, Union[Tensor, Dict[str, Tensor]]]:
 
@@ -412,7 +417,8 @@ class FcastDataset(Dataset):
             "site": site,
             "index": np.array([idx]),
         }
-
+        
+        # TODO: lucas have you purposefully removed meta?
         # data["meta"] = meta
 
         # CONVERT TO torch.Tensor OBJECTS
