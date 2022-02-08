@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import timedelta
 from typing import DefaultDict, Dict, List, Optional, Tuple, Union
-
+from dask.array import Array
 import numpy as np
 import pandas as pd
 import torch
@@ -70,7 +70,6 @@ class FcastDataset(Dataset):
         total_str += "------------\n"
         total_str += "\n"
         total_str += f"N Samples: {self.__len__()}\n"
-        # total_str += f"Dataset: {self.mode}\n"
         total_str += f"target: {self.target_var}\n"
         total_str += f"historic_variables: {self.historic_variables}\n"
         total_str += f"forecast_variables: {self.forecast_variables}\n"
@@ -201,6 +200,10 @@ class FcastDataset(Dataset):
 
         # mask nans by valid datetime
         logger.info("soft data transforms - validate datetimes")
+        for variable in data.data_vars:
+            if isinstance(data[variable].data, Array):
+                logger.info(f"Moving dask variable: [{variable}] into memory")
+                data[variable] = data[variable].compute()
         valid_dates = self.valid_datetimes(data)
 
         logger.info("soft data transforms - interpolate_1d")
