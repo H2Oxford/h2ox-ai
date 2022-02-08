@@ -200,10 +200,6 @@ class FcastDataset(Dataset):
 
         # mask nans by valid datetime
         logger.info("soft data transforms - validate datetimes")
-        for variable in data.data_vars:
-            if isinstance(data[variable].data, Array):
-                logger.info(f"Moving dask variable: [{variable}] into memory")
-                data[variable] = data[variable].compute()
         valid_dates = self.valid_datetimes(data)
 
         logger.info("soft data transforms - interpolate_1d")
@@ -421,8 +417,7 @@ class FcastDataset(Dataset):
             "index": np.array([idx]),
         }
         
-        # TODO: lucas have you purposefully removed meta?
-        # data["meta"] = meta
+        data["meta"] = meta
 
         # CONVERT TO torch.Tensor OBJECTS
         for key in data.keys():
