@@ -8,7 +8,7 @@ from h2ox.ai.dataset.utils import calculate_errors
 from h2ox.ai.dataset.dataset import FcastDataset
 from h2ox.ai.model import initialise_model
 from h2ox.ai.dataset.utils import load_zscore_data
-from h2ox.ai.train import train, train_validation_split, initialise_training, test
+from h2ox.ai.train import train, train_validation_test_split, initialise_training, test
 
 
 if __name__ == "__main__":
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     )
 
     # train-validation split
-    train_dd, validation_dd = train_validation_split(
+    train_dd, validation_dd = train_validation_test_split(
         dd, random_val_split=RANDOM_VAL_SPLIT, validation_proportion=0.8
     )
 

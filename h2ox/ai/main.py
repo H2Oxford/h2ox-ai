@@ -17,7 +17,7 @@ from h2ox.ai.dataset import DatasetFactory
 from h2ox.ai.experiment import ex
 from h2ox.ai.experiment_utils import plot_losses
 from h2ox.ai.model import initialise_model
-from h2ox.ai.train import initialise_training, train, train_validation_split
+from h2ox.ai.train import initialise_training, train, train_validation_test_split
 
 
 @ex.automain
@@ -35,7 +35,7 @@ def main(
     ).build_dataset()
 
     # train-validation split
-    train_dd, validation_dd = train_validation_split(
+    train_dd, validation_dd = train_validation_test_split(
         dd,
         random_val_split=training_parameters["random_val_split"],
         validation_proportion=0.8,
