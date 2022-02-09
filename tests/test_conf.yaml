@@ -20,9 +20,9 @@ dataset_parameters:
       - "lower_bhawani"
       - "krishnaraja_sagar"
     target_var: ["targets_WATER_VOLUME"]
-    historic_variables: ["historic_t2m","historic_tp","targets_WATER_VOLUME","doy_cos","doy_sin"]
-    forecast_variables: ["forecast_tp", "forecast_t2m","doy_cos","doy_sin"]
-    future_variables: ["doy_cos","doy_sin"]
+    historic_variables: ["historic_t2m","historic_tp","targets_WATER_VOLUME","doy_cos"]
+    forecast_variables: ["forecast_tp", "forecast_t2m","doy_cos"]
+    future_variables: ["doy_cos"]
     train_start_date: "2010-01-01"
     train_end_date: "2017-12-31"
     val_start_date: "2018-01-01"
@@ -32,7 +32,7 @@ dataset_parameters:
 
 # data parameters - build/load a cached dataset
 data_parameters:
-    cache_path: /home/jupyter/h2ox-ai/data/test_data.nc
+    cache_path: /Users/tommylees/github/h2ox/h2ox-ai/data/test_data.nc  # /home/jupyter/h2ox-ai/data/test_data.nc
     sites:
       - "kabini"
       - "harangi"
@@ -54,12 +54,12 @@ data_parameters:
           - krishnaraja_sagar
         sin_or_cos: [sin,cos]
         start_step: 0
-        end_step: 91
+        end_step: 90
         step_size: 1
       forecast:
         class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
         variable_keys: [t2m,tp]
-        gdf_path: /home/jupyter/h2ox-ai/data/basins.geojson
+        gdf_path: /Users/tommylees/github/h2ox/h2ox-ai/data/basins.geojson  # /home/jupyter/h2ox-ai/data/basins.geojson
         site_col: DAM_NAME
         site_keys:
           - kabini
@@ -80,7 +80,7 @@ data_parameters:
       historic:
         class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
         variable_keys: [t2m,tp]
-        gdf_path: /home/jupyter/h2ox-ai/data/basins.geojson
+        gdf_path: /Users/tommylees/github/h2ox/h2ox-ai/data/basins.geojson  # /home/jupyter/h2ox-ai/data/basins.geojson
         site_col: DAM_NAME
         site_keys:
           - kabini
@@ -92,9 +92,9 @@ data_parameters:
         datetime_col: time
         z_address: gs://oxeo-era5/build
         steps_key: null
-        start_step: null
-        end_step: null
-        step_size: null
+        start_step: 0
+        end_step: 15
+        step_size: 1
         zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
         lat_col: latitude
         lon_col: longitude

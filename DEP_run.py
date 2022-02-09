@@ -1,15 +1,6 @@
-from pathlib import Path
 from typing import List, Dict, Any, Callable
 
-import torch
 from sacred import Experiment
-from torch.utils.data import DataLoader
-
-from h2ox.ai.dataset import FcastDataset
-from h2ox.ai.model import initialise_model
-from h2ox.ai.train import initialise_training, train, train_validation_split
-from h2ox.ai.scripts.utils import load_zscore_data, load_samantha_updated_data
-from h2ox.ai.data_utils import normalize_data
 from h2ox.ai.main import _main
 
 # instantiate the Experiment class
@@ -77,8 +68,8 @@ def get_correct_keys(conf: Dict[str, Any], func: Callable) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     # parameters from the yaml file
-    # ex.add_config("conf.yaml")
-    ex.add_config("tests/test.yaml")
+    ex.add_config("conf.yaml")
+    # ex.add_config("tests/test.yaml")
 
     # get the correct keys from the config file to pass to main()
     config_obj = ex.configurations[0]._conf
