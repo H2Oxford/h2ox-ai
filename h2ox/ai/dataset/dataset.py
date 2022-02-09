@@ -45,6 +45,8 @@ class FcastDataset(Dataset):
         self.future_variables = future_variables
         self.time_dim = time_dim
         self.horizon_dim = horizon_dim
+        self.sites = data["global_sites"].values
+        self.sites_dictionary = dict(enumerate(self.sites))
 
         # soft data and filtering rules
         self.normalise = normalise
@@ -407,11 +409,13 @@ class FcastDataset(Dataset):
         #  NOTE: has to be in float format to play nicely with pytorch DataLoaders
         input_times = np.array([(date + timedelta(days=ii)).to_numpy() for ii in range(-data["x_d"].shape[0], 0)]).astype(float)
         target_times = np.array([(date + timedelta(days=ii)).to_numpy() for ii in range(1, data["y"].shape[0])]).astype(float)
-
+        # site has to be stored as int
+        site_encoding = {v: k for (k, v) in self.sites_dictionary.items()}[site]
+        
         meta = {  # noqa
             "input_times": input_times,
             "target_times": target_times,
-            "site": site,
+            "site": np.array([site_encoding]),
             "index": np.array([idx]),
         }
         

@@ -1,6 +1,7 @@
 from pathlib import Path
 from ruamel.yaml import YAML
 import xarray as xr
+from torch.utils.data import DataLoader
 from h2ox.ai.dataset.dataset import FcastDataset
 from h2ox.ai.train import train_validation_test_split
 from h2ox.ai.dataset.utils import load_zscore_data
@@ -56,5 +57,9 @@ if __name__ == "__main__":
     train_eg = train_dd[0]
     val_eg = val_dd[0]
     test_eg = test_dd[0]
+
+    test_dl = DataLoader(test_dd, batch_size=111)
+    dummy = test_dl.__iter__().__next__()
+    print(dummy["meta"]["site"].shape)
 
     assert False
