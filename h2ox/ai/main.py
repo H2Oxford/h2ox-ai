@@ -8,130 +8,60 @@ Returns:
     [type]: [description]
 """
 from pathlib import Path
-from typing import List
 
 import torch
-from torch.utils.data import DataLoader
 from loguru import logger
-import xarray as xr
+from torch.utils.data import DataLoader
 
-from h2ox.ai.dataset import FcastDataset
+from h2ox.ai.dataset import DatasetFactory
 from h2ox.ai.experiment import ex
+from h2ox.ai.experiment_utils import plot_losses
 from h2ox.ai.model import initialise_model
-from h2ox.ai.scripts.utils import load_zscore_data
-from h2ox.ai.train import initialise_training, train, train_validation_split, test
-from h2ox.ai.data_utils import normalize_data, unnormalize_preds
-from h2ox.ai.experiment_utils import (
-    plot_losses,
-    plot_horizon_losses,
-    plot_timeseries_over_horizon,
-)
-from h2ox.ai.data_utils import calculate_errors
+from h2ox.ai.train import initialise_training, train, train_validation_test_split
 
 
-def _main(
-    seq_len: int = 60,
-    future_horizon: int = 76,
-    target_var: str = "volume_bcm",
-    train_end_date: str = "2018-12-31",
-    train_start_date: str = "2010-01-01",
-    test_start_date: str = "2019-01-01",
-    test_end_date: str = "2022-01-01",
-    history_variables: List[str] = ["tp", "t2m"],
-    forecast_variables: List[str] = ["tp", "t2m"],
-    encode_doy: bool = True,
-    sites: List[str] = ["kabini"],
-    batch_size: int = 32,
-    hidden_size: int = 64,
-    num_layers: int = 1,
-    dropout: float = 0.4,
-    num_workers: int = 1,
-    random_val_split: bool = True,
-    eval_test: bool = True,
-    n_epochs: int = 30,
-    normalize: bool = False,
-    validate_every_n: int = 3,
-    include_ohe: bool = True,
+@ex.automain
+def main(
+    dataset_parameters: dict,
+    data_parameters: dict,
+    model_parameters: dict,
+    training_parameters: dict,
 ) -> int:
     # load data
-    data_dir = Path.cwd() / "data"
-    target, history, forecast = load_zscore_data(data_dir)
-    history = history.merge(target)
-    # sam_data = load_samantha_updated_data(data_dir)
-    # target = sam_data[[target_var]]
-    # history = sam_data
-    # forecast = None
+    Path.cwd() / "data"
 
-    # train-test split
-    # normalize data
-    if normalize:
-        train_history, (history_mn, history_std) = normalize_data(
-            history.sel(time=slice(train_start_date, train_end_date)),
-            static_or_global=True,
-        )
-        train_target, (target_mn, target_std) = normalize_data(
-            target.sel(time=slice(train_start_date, None)), static_or_global=True
-        )
-        train_forecast, (forecast_mn, forecast_std) = normalize_data(
-            forecast.sel(initialisation_time=slice(train_start_date, None)),
-            time_dim="initialisation_time",
-            static_or_global=True,
-        )
-        test_history, _ = normalize_data(
-            history.sel(time=slice(test_start_date, test_end_date)),
-            mean_=history_mn,
-            std_=history_std,
-        )
-        test_forecast, _ = normalize_data(
-            forecast.sel(initialisation_time=slice(test_start_date, None)),
-            mean_=target_mn,
-            std_=target_std,
-        )
-        test_target, _ = normalize_data(
-            target.sel(time=slice(test_start_date, None)),
-            mean_=forecast_mn,
-            std_=forecast_std,
-        )
-    else:
-        train_history = history.sel(time=slice(train_start_date, train_end_date))
-        train_forecast = forecast.sel(initialisation_time=slice(train_start_date, None))
-        train_target = target.sel(time=slice(train_start_date, None))
-
-        test_history = history.sel(time=slice(test_start_date, test_end_date))
-        test_forecast = forecast.sel(initialisation_time=slice(test_start_date, None))
-        test_target = target.sel(time=slice(test_start_date, None))
-
-    dd = FcastDataset(
-        target=train_target,  # target,
-        history=train_history.sel(location=sites),  # history,
-        forecast=train_forecast,  # forecast,
-        encode_doy=encode_doy,
-        historical_seq_len=seq_len,
-        future_horizon=future_horizon,
-        target_var=target_var,
-        mode="train",
-        history_variables=history_variables,
-        forecast_variables=forecast_variables,
-        include_ohe=include_ohe,
-    )
-
-    print(dd)
+    dd = DatasetFactory(
+        {"data_parameters": data_parameters, "dataset_parameters": dataset_parameters}
+    ).build_dataset()
 
     # train-validation split
-    train_dd, validation_dd = train_validation_split(
-        dd, random_val_split=random_val_split, validation_proportion=0.8
+    train_dd, validation_dd = train_validation_test_split(
+        dd,
+        random_val_split=training_parameters["random_val_split"],
+        validation_proportion=0.8,
     )
 
     train_dl = DataLoader(
-        train_dd, batch_size=batch_size, shuffle=False, num_workers=num_workers
+        train_dd,
+        batch_size=training_parameters["batch_size"],
+        shuffle=False,
+        num_workers=training_parameters["num_workers"],
     )
     val_dl = DataLoader(
-        validation_dd, batch_size=batch_size, shuffle=False, num_workers=num_workers
+        validation_dd,
+        batch_size=training_parameters["batch_size"],
+        shuffle=False,
+        num_workers=training_parameters["num_workers"],
     )
+
+    item = dd.__getitem__(0)
 
     # initialise model
     model = initialise_model(
-        dd, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
+        item,
+        hidden_size=model_parameters["hidden_size"],
+        num_layers=model_parameters["num_layers"],
+        dropout=model_parameters["dropout"],
     )
 
     # # train
@@ -146,9 +76,9 @@ def _main(
         optimizer=optimizer,
         scheduler=scheduler,
         loss_fn=loss_fn,
-        epochs=n_epochs,
+        epochs=training_parameters["n_epochs"],
         val_dl=val_dl,
-        validate_every_n=validate_every_n,
+        validate_every_n=training_parameters["validate_every_n"],
         experiment=ex,
     )
 
@@ -160,6 +90,7 @@ def _main(
         plot_losses(filepath=filepath, losses=losses, val_losses=val_losses)
 
     # # test
+    """ TODO: change test_dd to come from split above
     if eval_test:
         # load dataset
         test_dd = FcastDataset(
@@ -189,6 +120,7 @@ def _main(
 
     print(errors)
 
+
     # if how_well_do_we_do_on_train_data:
     #     train_preds = test(model, train_dl)
     #     train_errors = calculate_errors(train_preds, target_var, model_str="s2s2s")
@@ -208,54 +140,6 @@ def _main(
         preds.to_netcdf(filepath / "preds.nc")
 
     # TODO: create a summary table and save to .tex file ?
+    """
 
     return 1
-
-
-@ex.automain
-def main(
-    seq_len: int,
-    future_horizon: int,
-    target_var: str,
-    train_end_date: str,
-    train_start_date: str,
-    test_start_date: str,
-    test_end_date: str,
-    history_variables: List[str],
-    forecast_variables: List[str],
-    encode_doy: bool,
-    batch_size: int,
-    hidden_size: int,
-    num_layers: int,
-    dropout: float,
-    num_workers: int,
-    random_val_split: bool,
-    eval_test: bool,
-    n_epochs: int,
-    sites: List[str] = ["kabini"],
-    normalize: bool = False,
-) -> int:
-
-    out = _main(
-        seq_len=seq_len,
-        future_horizon=future_horizon,
-        target_var=target_var,
-        train_end_date=train_end_date,
-        train_start_date=train_start_date,
-        test_start_date=test_start_date,
-        test_end_date=test_end_date,
-        history_variables=history_variables,
-        forecast_variables=forecast_variables,
-        encode_doy=encode_doy,
-        sites=sites,
-        batch_size=batch_size,
-        hidden_size=hidden_size,
-        num_layers=num_layers,
-        dropout=dropout,
-        num_workers=num_workers,
-        random_val_split=random_val_split,
-        eval_test=eval_test,
-        n_epochs=n_epochs,
-        normalize=normalize,
-    )
-    return out
