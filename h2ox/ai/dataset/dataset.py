@@ -1,13 +1,13 @@
 from collections import defaultdict
 from datetime import timedelta
 from typing import DefaultDict, Dict, List, Optional, Tuple, Union
-from dask.array import Array
+
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_numeric_dtype
 import torch
 import xarray as xr
 from loguru import logger
+from pandas.api.types import is_numeric_dtype
 from torch import Tensor
 from torch.utils.data import Dataset
 
@@ -312,7 +312,7 @@ class FcastDataset(Dataset):
                 timedelta(days=ii)
                 for ii in range(
                     self.forecast_horizon + 1,
-                    self.forecast_horizon + self.future_horizon,
+                    self.forecast_horizon + self.future_horizon + 1,
                 )
             ]
         )
@@ -334,12 +334,12 @@ class FcastDataset(Dataset):
                 data[self.target_var]
                 .sel({"steps": np.timedelta64(0)})
                 .shift({"date": -ii})
-                for ii in range(1, self.forecast_horizon + self.future_horizon)
+                for ii in range(1, self.forecast_horizon + self.future_horizon + 1)
             ],
             pd.TimedeltaIndex(
                 [
                     timedelta(days=ii)
-                    for ii in range(1, self.forecast_horizon + self.future_horizon)
+                    for ii in range(1, self.forecast_horizon + self.future_horizon + 1)
                 ],
                 name="target_roll",
             ),

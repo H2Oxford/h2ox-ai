@@ -9,11 +9,14 @@ import xskillscore as xs
 
 
 def gcsfs_mapper():
+    """Filesystem mapper for Google Cloud Storage paths."""
     fs = gcsfs.GCSFileSystem(access="read_only")
     return fs.get_mapper
 
 
 def null_mapper():
+    """File system mapper for local paths (i.e. no mapper required)"""
+
     def return_null(x):
         return x
 
@@ -26,15 +29,18 @@ def group_consecutive_nans(
     outer_groupby_coords: str = "global_sites",
     time_coord: str = "date",
 ) -> xr.DataArray:
-    """TODO: lucas can you complete the docstring [summary]
-    - what are we grouping by?
-    - what dimensions are we collapsing
+    """A method to count consecutive nans along a given dimension.
+    Needed to mask consecutive nans exceeding a threshold prior to interpolation.
+
+    E.g.:
+    Input sample in da (along time_coord):     [3,5,nan,nan,7,9,10,nan,nan,nan,3,2,nan,5]
+    Output sample along da (along time_coord): [0,0,2,2,0,0,0,3,3,3,0,0,1,0]
 
     Args:
-        da (xr.DataArray): [description]
-        variable_name (str): [description]
-        outer_groupby_coords (str): [description]
-        time_coord (str): [description]
+        da (xr.DataArray): array with original data and some nan
+        variable_name (str): variable name to select from array (for reverse broadcast)
+        outer_groupby_coords (str): outer map dimsion
+        time_coord (str): dimension along which to count consecutive nan
 
     Returns:
         xr.DataArray: [description]
@@ -63,13 +69,22 @@ def assymetric_boolean_dilate(
     right_dilatation: int,
     target: Union[bool, int],
 ) -> np.ndarray:
-    """[summary]TODO: lucas can you complete the docstring
+    """A method to asymmetrically dilate a 1-D boolean array.
+    Needed to mask indices of dates prior to and proceeding from nan data
+
+    E.g.
+    left_dilation: 1 step
+    right_dilation: 2 steps
+    target: 1
+    Input arr:  [0,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,1]
+    (flip:      [0,0,L,1,1,R,*,1,1,1,R,R,0,0,0,L,1], *: L & R)
+    output arr: [0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1]
 
     Args:
         arr (np.ndarray): array of boolean values of length `date`
-        left_dilation (int): `historical_seq_length`
-        right_dilatation (int): `target_horizon`
-        target Union[bool, int]: What value are we trying to find in the `arr`?
+        left_dilation (int): dilation to the left, i.e. historic sequence length
+        right_dilatation (int): dilation to the right, i.e. forecast/future horizon
+        target Union[bool, int]: the value in arr to dilate, i.e. dilate 1/True? or 0/False?
 
     Returns:
         np.ndarray: [description]

@@ -20,9 +20,9 @@ dataset_parameters:
       - "lower_bhawani"
       - "krishnaraja_sagar"
     target_var: ["targets_WATER_VOLUME"]
-    historic_variables: ["historic_t2m","historic_tp","targets_WATER_VOLUME","doy_cos"]
-    forecast_variables: ["forecast_tp", "forecast_t2m","doy_cos"]
-    future_variables: ["doy_cos"]
+    historic_variables: ["historic_t2m","historic_tp","targets_WATER_VOLUME","doy_cos","doy_sin"]
+    forecast_variables: ["forecast_tp", "forecast_t2m","doy_cos","doy_sin"]
+    future_variables: ["doy_cos","doy_sin"]
     train_start_date: "2010-01-01"
     train_end_date: "2017-12-31"
     val_start_date: "2018-01-01"
@@ -54,7 +54,7 @@ data_parameters:
           - krishnaraja_sagar
         sin_or_cos: [sin,cos]
         start_step: 0
-        end_step: 90
+        end_step: 91
         step_size: 1
       forecast:
         class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
@@ -92,9 +92,9 @@ data_parameters:
         datetime_col: time
         z_address: gs://oxeo-era5/build
         steps_key: null
-        start_step: 0
-        end_step: 15
-        step_size: 1
+        start_step: null
+        end_step: null
+        step_size: null
         zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
         lat_col: latitude
         lon_col: longitude
