@@ -45,7 +45,10 @@ def group_consecutive_nans(
         .groupby(outer_groupby_coords)
         .map(
             # groupby all remaning dims (date, steps[horizon])
-            lambda g: g.groupby(...).count().sel({variable_name: g}).drop(variable_name)
+            lambda g: g.groupby(...)
+            .count()
+            .sel({variable_name: g})
+            .drop(variable_name)
         )
     )
 
@@ -60,7 +63,7 @@ def assymetric_boolean_dilate(
     right_dilatation: int,
     target: Union[bool, int],
 ) -> np.ndarray:
-    """[summary]TODO: lucas can you complete the docstring 
+    """[summary]TODO: lucas can you complete the docstring
 
     Args:
         arr (np.ndarray): array of boolean values of length `date`

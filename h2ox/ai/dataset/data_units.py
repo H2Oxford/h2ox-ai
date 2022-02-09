@@ -237,7 +237,7 @@ class ZRSpatialDataUnit(DataUnit):
             )
             array = array.expand_dims({steps_key: steps_idx})
         else:
-            # convert integer steps into TimeDelta objects 
+            # convert integer steps into TimeDelta objects
             if steps is not None:
                 array = array.sel(
                     {steps_key: pd.TimedeltaIndex([timedelta(days=ii) for ii in steps])}
@@ -245,7 +245,7 @@ class ZRSpatialDataUnit(DataUnit):
 
         # rename for consistency
         array = array.rename({datetime_col: "date", steps_key: "steps"})
-        
+
         # Compute the dask objects and track progress via progress bar
         logger.info(f"{data_unit_name} - Dask --> In Memory;")
         pbar = ProgressBar()

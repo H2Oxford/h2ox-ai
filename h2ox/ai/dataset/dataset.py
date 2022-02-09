@@ -407,18 +407,28 @@ class FcastDataset(Dataset):
 
         # CREATE META DICT (for recreating outputs for correct time)
         #  NOTE: has to be in float format to play nicely with pytorch DataLoaders
-        input_times = np.array([(date + timedelta(days=ii)).to_numpy() for ii in range(-data["x_d"].shape[0], 0)]).astype(float)
-        target_times = np.array([(date + timedelta(days=ii)).to_numpy() for ii in range(1, data["y"].shape[0])]).astype(float)
+        input_times = np.array(
+            [
+                (date + timedelta(days=ii)).to_numpy()
+                for ii in range(-data["x_d"].shape[0], 0)
+            ]
+        ).astype(float)
+        target_times = np.array(
+            [
+                (date + timedelta(days=ii)).to_numpy()
+                for ii in range(1, data["y"].shape[0])
+            ]
+        ).astype(float)
         # site has to be stored as int
         site_encoding = {v: k for (k, v) in self.sites_dictionary.items()}[site]
-        
+
         meta = {  # noqa
             "input_times": input_times,
             "target_times": target_times,
             "site": np.array([site_encoding]),
             "index": np.array([idx]),
         }
-        
+
         data["meta"] = meta
 
         # CONVERT TO torch.Tensor OBJECTS

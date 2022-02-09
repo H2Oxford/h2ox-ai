@@ -2,7 +2,7 @@ from h2ox.ai.dataset.dataset import FcastDataset
 from h2ox.ai.dataset.utils import load_zscore_data
 from pathlib import Path
 from torch.utils.data import DataLoader
-import torch 
+import torch
 from h2ox.ai.model import S2S2SModel
 
 

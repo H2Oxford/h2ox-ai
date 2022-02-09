@@ -9,11 +9,11 @@ from h2ox.ai.dataset.utils import load_zscore_data
 
 def create_dummy_data() -> xr.Dataset:
     """Create dummy dataset with same shape as output of dataset factory
-    Dimensions: 
+    Dimensions:
         steps: timedelta64[ns] = 90
         date: datetime64[ns] = 1000
         global_sites: str = 6
-    
+
     Variables:
         historic_t2m: float64 = (steps, date, global_sites)
         historic_tp: float64 = (steps, date, global_sites)
@@ -28,7 +28,7 @@ def create_dummy_data() -> xr.Dataset:
 
 if __name__ == "__main__":
     yml_path = Path("tests/test_conf.yaml")
-    with yml_path.open('r') as fp:
+    with yml_path.open("r") as fp:
         yaml = YAML(typ="safe")
         cfg = yaml.load(fp)
 
@@ -37,16 +37,14 @@ if __name__ == "__main__":
         ds = xr.open_dataset(data_dir / "cache.nc")
     else:
         ds = create_dummy_data()
-    
+
     data = FcastDataset(
         ds,
         **cfg["dataset_parameters"],
     )
 
     train_dd, val_dd, test_dd = train_validation_test_split(
-        data, 
-        cfg=cfg,
-        time_dim="date"
+        data, cfg=cfg, time_dim="date"
     )
 
     meta_df = train_dd.dataset._get_meta_dataframe()

@@ -271,8 +271,11 @@ def _process_metadata(
 
 
 def _eval_data_to_ds(
-    eval_data: DefaultDict[str, List[np.ndarray]], assign_sample: bool = False,
-    time_dim: str = "date", horizon_dim: str = "step", sample_dim: str = "sample",
+    eval_data: DefaultDict[str, List[np.ndarray]],
+    assign_sample: bool = False,
+    time_dim: str = "date",
+    horizon_dim: str = "step",
+    sample_dim: str = "sample",
 ) -> xr.Dataset:
     # get correct shapes for arrays as output
     obs = np.concatenate(eval_data["obs"], axis=0)
@@ -340,14 +343,20 @@ def train_validation_test_split(
     index_df = train_dataset._get_meta_dataframe()
     index_df = index_df.sort_values(time_dim)
     # reindex by date so that can use pandas slicing functionality
-    index_df = index_df.reset_index().rename(columns={"index": "pt_index"}).set_index(time_dim)
+    index_df = (
+        index_df.reset_index().rename(columns={"index": "pt_index"}).set_index(time_dim)
+    )
 
-    train_indexes = index_df.loc[train_start_date: train_end_date]["pt_index"]
-    val_indexes = index_df.loc[val_start_date: val_end_date]["pt_index"]
-    test_indexes = index_df.loc[test_start_date: test_end_date]["pt_index"]
+    train_indexes = index_df.loc[train_start_date:train_end_date]["pt_index"]
+    val_indexes = index_df.loc[val_start_date:val_end_date]["pt_index"]
+    test_indexes = index_df.loc[test_start_date:test_end_date]["pt_index"]
 
-    assert not any(np.isin(train_indexes, test_indexes)), "Leakage: train indexes in test data"
-    assert not any(np.isin(val_indexes, test_indexes)), "Leakage: validation indexes in test data"
+    assert not any(
+        np.isin(train_indexes, test_indexes)
+    ), "Leakage: train indexes in test data"
+    assert not any(
+        np.isin(val_indexes, test_indexes)
+    ), "Leakage: validation indexes in test data"
 
     # TODO: for pretty printing etc. create a derived class from Subset
     #  with a custom __repr__ method from the original FcastDataset class

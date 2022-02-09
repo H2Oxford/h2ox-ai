@@ -108,7 +108,9 @@ class DatasetFactory:
             array = data_unit_instance.build(
                 start_datetime=sdt,
                 end_datetime=edt,
-                site_mapper=self.get_site_mapper(data_unit_options["site_keys"], self.cfg["sites"]),
+                site_mapper=self.get_site_mapper(
+                    data_unit_options["site_keys"], self.cfg["sites"]
+                ),
                 data_unit_name=data_unit_name,
                 **data_unit_options,
             )
