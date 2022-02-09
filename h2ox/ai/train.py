@@ -312,28 +312,47 @@ def _eval_data_to_ds(
         return ds
 
 
-def train_validation_split(
+def train_validation_test_split(
     train_dataset: FcastDataset,
-    random_val_split: bool,
-    validation_proportion: float = 0.8,
+    cfg: Dict[str, Any],
     time_dim: str = "date",
-) -> Tuple[FcastDataset, FcastDataset]:
-    train_size = int(validation_proportion * len(train_dataset))
-    validation_size = len(train_dataset) - train_size
-    if random_val_split:
-        train_dd, validation_dd = torch.utils.data.random_split(
-            train_dataset, [train_size, validation_size]
-        )
-    else:
-        # SEQUENTIAL = train from 1:N; validation from N:-1
-        # (NOTE: INDEXED BY TIME NOT SPACE - first sort the index_df by time)
-        # TODO: pass in date objects to slice the dataset appropriately
-        index_df = train_dataset._get_meta_dataframe()
-        index_df = index_df.sort_values(time_dim)
-        train_indexes = index_df.index[:train_size]
-        val_indexes = index_df.index[-validation_size:]
+) -> Tuple[FcastDataset, ...]:
+    """Create train, validation, test dataset objects as a subset of original
 
-        train_dd = Subset(train_dataset, train_indexes)
-        validation_dd = Subset(train_dataset, val_indexes)
+    Args:
+        train_dataset (FcastDataset): [description]
+        cfg (Dict[str, Any]): [description]
+        time_dim (str, optional): [description]. Defaults to "date".
 
-    return train_dd, validation_dd
+    Returns:
+        Tuple[FcastDataset, ...]: train, validation, test datasets
+    """
+    train_start_date = cfg["dataset_parameters"]["train_start_date"]
+    train_end_date = cfg["dataset_parameters"]["train_end_date"]
+    val_start_date = cfg["dataset_parameters"]["val_start_date"]
+    val_end_date = cfg["dataset_parameters"]["val_end_date"]
+    test_start_date = cfg["dataset_parameters"]["test_start_date"]
+    test_end_date = cfg["dataset_parameters"]["test_end_date"]
+
+    # SEQUENTIAL = train from 1:N; validation from N:-1
+    # (NOTE: INDEXED BY TIME NOT SPACE - first sort the index_df by time)
+    # TODO: pass in date objects to slice the dataset appropriately
+    index_df = train_dataset._get_meta_dataframe()
+    index_df = index_df.sort_values(time_dim)
+    # reindex by date so that can use pandas slicing functionality
+    index_df = index_df.reset_index().rename(columns={"index": "pt_index"}).set_index(time_dim)
+
+    train_indexes = index_df.loc[train_start_date: train_end_date]["pt_index"]
+    val_indexes = index_df.loc[val_start_date: val_end_date]["pt_index"]
+    test_indexes = index_df.loc[test_start_date: test_end_date]["pt_index"]
+
+    assert not any(np.isin(train_indexes, test_indexes)), "Leakage: train indexes in test data"
+    assert not any(np.isin(val_indexes, test_indexes)), "Leakage: validation indexes in test data"
+
+    # TODO: for pretty printing etc. create a derived class from Subset
+    #  with a custom __repr__ method from the original FcastDataset class
+    train_dd = Subset(train_dataset, train_indexes)
+    validation_dd = Subset(train_dataset, val_indexes)
+    test_dd = Subset(train_dataset, test_indexes)
+
+    return train_dd, validation_dd, test_dd
