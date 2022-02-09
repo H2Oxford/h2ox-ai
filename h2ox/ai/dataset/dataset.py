@@ -404,12 +404,9 @@ class FcastDataset(Dataset):
             return None
 
         # CREATE META DICT (for recreating outputs for correct time)
-        input_times = [
-            (date + timedelta(days=ii)) for ii in range(-data["x_d"].shape[0], 0)
-        ]
-        target_times = [
-            (date + timedelta(days=ii) for ii in range(1, data["y"].shape[0]))
-        ]
+        #  NOTE: has to be in float format to play nicely with pytorch DataLoaders
+        input_times = np.array([(date + timedelta(days=ii)).to_numpy() for ii in range(-data["x_d"].shape[0], 0)]).astype(float)
+        target_times = np.array([(date + timedelta(days=ii)).to_numpy() for ii in range(1, data["y"].shape[0])]).astype(float)
 
         meta = {  # noqa
             "input_times": input_times,
