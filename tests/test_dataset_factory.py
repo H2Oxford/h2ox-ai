@@ -48,8 +48,14 @@ def test_creation_of_all_test_data(cfg: Dict[str, Any]):
 
 
 if __name__ == "__main__":
-    # yml_path = Path("tests/test_conf.yaml")
-    yml_path = Path("conf.yaml")
+    RELOAD = False
+    TEST_CONFIG = True
+
+    if TEST_CONFIG:
+        yml_path = Path("tests/test_conf.yaml")
+    else:
+        yml_path = Path("conf.yaml")
+    
     with yml_path.open("r") as fp:
         yaml = YAML(typ="safe")
         cfg = yaml.load(fp)
@@ -65,6 +71,12 @@ if __name__ == "__main__":
     cfg["data_parameters"]["data_units"]["historic"]["gdf_path"] = (
         Path(".").absolute() / "data/basins.geojson"
     ).as_posix()
+
+    if RELOAD:
+        # remove the cached files to force a rebuild
+        data_dir = Path(cfg["data_parameters"]["data_units"]["historic"]["gdf_path"]).parent
+        (data_dir / "data/cache.nc").unlink()
+        (data_dir / "data/cache.yaml").unlink()
 
     test_creation_of_all_test_data(cfg)
     # test_individual_build_data_units(cfg, full_load=True)
