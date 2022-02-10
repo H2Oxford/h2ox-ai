@@ -55,7 +55,7 @@ if __name__ == "__main__":
         yml_path = Path("tests/test_conf.yaml")
     else:
         yml_path = Path("conf.yaml")
-    
+
     with yml_path.open("r") as fp:
         yaml = YAML(typ="safe")
         cfg = yaml.load(fp)
@@ -74,7 +74,9 @@ if __name__ == "__main__":
 
     if RELOAD:
         # remove the cached files to force a rebuild
-        data_dir = Path(cfg["data_parameters"]["data_units"]["historic"]["gdf_path"]).parent
+        data_dir = Path(
+            cfg["data_parameters"]["data_units"]["historic"]["gdf_path"]
+        ).parent
         (data_dir / "data/cache.nc").unlink()
         (data_dir / "data/cache.yaml").unlink()
 

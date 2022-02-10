@@ -22,7 +22,20 @@ import numpy as np
 #         return data
 
 
-def flatten_dict_for_comparison(d: dict, parent_key='', sep='_'):
+def flatten_dict_for_comparison(
+    d: dict, parent_key: str = "", sep: str = "_"
+) -> Dict[str, Any]:
+    """Flattens nested dictionaries using `sep` to create keys
+
+    Args:
+        d (dict): input dictionary
+        parent_key (str, optional): [description]. Defaults to ''.
+        sep (str, optional): how to separate strings in dict keys. Defaults to '_'.
+
+    Returns:
+        Dict[str, Any]: Flattened dictionary with original values but with
+            keys separated by `sep`
+    """
     items = []
     for k, v in d.items():
         new_key = parent_key + sep + k if parent_key else k
@@ -32,11 +45,12 @@ def flatten_dict_for_comparison(d: dict, parent_key='', sep='_'):
             items.append((new_key, v))
     return dict(items)
 
+
 def compare_dicts(
     new_cfg: dict,
     reference_cfg: dict,
 ) -> Tuple[List[str]]:
-    # note assumes dict already flattened 
+    # note assumes dict already flattened
     new_keys = []
     different_values = []
     for k, v in new_cfg.items():
@@ -44,8 +58,12 @@ def compare_dicts(
             new_keys.append(f"New key: {k} in config")
         else:
             if not (new_cfg[k] == reference_cfg[k]):
-                different_values.append(f"{k} (new != original): {new_cfg[k]} != {reference_cfg[k]}")
-    missing_keys_list = np.array(reference_cfg.keys())[~np.isin(reference_cfg.keys(), new_cfg.keys())]
+                different_values.append(
+                    f"{k} (new != original): {new_cfg[k]} != {reference_cfg[k]}"
+                )
+    missing_keys_list = np.array(reference_cfg.keys())[
+        ~np.isin(reference_cfg.keys(), new_cfg.keys())
+    ]
     missing_keys = [f"Missing key: {k} from config" for k in missing_keys_list]
 
     return new_keys, missing_keys, different_values
@@ -81,10 +99,12 @@ class DatasetFactory:
                 # https://stackoverflow.com/a/41808831/9940782
                 new_cfg = dict(flatten_dict_for_comparison(self.cfg).items())
                 reference_cfg = dict(flatten_dict_for_comparison(cache_cfg).items())
-                new_keys, missing_keys, different_values = compare_dicts(new_cfg, reference_cfg)
+                new_keys, missing_keys, different_values = compare_dicts(
+                    new_cfg, reference_cfg
+                )
                 logger.info(f"New keys:\n {new_keys}")
                 logger.info(f"Missing keys:\n {missing_keys}")
-                diff_values_repr = '\n'.join(different_values)
+                diff_values_repr = "\n".join(different_values)
                 logger.info(f"Different Values:\n {diff_values_repr}")
                 return False
         else:
