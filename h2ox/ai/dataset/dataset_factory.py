@@ -152,7 +152,17 @@ class DatasetFactory:
 
         return ptdataset
 
-    def _build_data(self, merge: bool = True):
+    def _build_data(self, merge: bool = True) -> Union[xr.Dataset, List[xr.Dataset]]:
+        """For each data unit in the config (`self.cfg["data_units"]`),
+        build the data and merge it into a single dataset.
+
+        Args:
+            merge (bool, optional): Merge different data_units into one xr.Dataset.
+                Defaults to True.
+
+        Returns:
+            Union[xr.Dataset, List[xr.Dataset, ...]]: Dataset or List of Dataset objects
+        """
 
         sdt = datetime.strptime(self.cfg["start_data_date"], "%Y-%m-%d")
         edt = datetime.strptime(self.cfg["end_data_date"], "%Y-%m-%d")
@@ -161,7 +171,9 @@ class DatasetFactory:
 
         # data_unit_options: Dict[str, Any]
         for data_unit_name, data_unit_options in self.cfg["data_units"].items():
+            # the class for the data unit
             data_unit_instance = locate(data_unit_options["class"])()
+            # each data unit has its own `.build()` function
             array = data_unit_instance.build(
                 start_datetime=sdt,
                 end_datetime=edt,

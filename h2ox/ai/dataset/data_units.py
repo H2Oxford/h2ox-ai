@@ -42,7 +42,6 @@ class DataUnit(abc.ABC):
 
 
 class CSVDataUnit(DataUnit):
-
     """A dataclass for building dataframes from csv source files."""
 
     def build(
@@ -57,7 +56,6 @@ class CSVDataUnit(DataUnit):
         site_col: str,
         **kwargs,
     ) -> xr.DataArray:
-
         """Build the dataunit. Data must be indexed by datetime, site and variable.
 
         Args:
