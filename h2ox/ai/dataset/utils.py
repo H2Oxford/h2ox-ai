@@ -5,7 +5,8 @@ import gcsfs
 import numpy as np
 import pandas as pd
 import xarray as xr
-import xskillscore as xs
+
+# import xskillscore as xs
 
 
 def gcsfs_mapper():
@@ -178,42 +179,36 @@ def create_doy(values: List[int]) -> Tuple[List[float], ...]:
 def calculate_errors(
     preds: xr.Dataset,
     var: str,
-    time_dim: str = "initialisation_time",
+    site_dim: str = "sample",
+    horizon_dim: str = "step",
     model_str: str = "s2s",
 ) -> xr.Dataset:
-    # smp = np.unique(preds["sample"])[0]
-    all_sample_errors = []
-    for smp in np.unique(preds["sample"]):
-        pp = preds.sel({time_dim: preds["sample"] == smp}).drop("sample")
+    def np_mape(Y_actual, Y_predicted):
+        return np.mean(np.abs((Y_actual - Y_predicted) / Y_actual))
 
-        # TODO: use another library for these scores, xs dependency pip isntall hangs?
-        rmse = (
-            xs.rmse(pp["obs"], pp["sim"], dim=time_dim)
-            .expand_dims(model=[model_str])
-            .expand_dims(sample=[smp])
-            .expand_dims(variable=[var])
-            .rename("rmse")
-        )
-        pearson = (
-            xs.pearson_r(pp["obs"], pp["sim"], dim=time_dim)
-            .expand_dims(model=[model_str])
-            .expand_dims(sample=[smp])
-            .expand_dims(variable=[var])
-            .rename("pearson-r")
-        )
-        mape = (
-            xs.mape(pp["obs"], pp["sim"], dim=time_dim)
-            .expand_dims(model=[model_str])
-            .expand_dims(sample=[smp])
-            .expand_dims(variable=[var])
-            .rename("mape")
+    def np_pearson(x, y):
+        return np.sum((x - np.mean(x)) * (y - np.mean(y))) / np.sqrt(
+            (np.sum((x - np.mean(x)) ** 2)) * (np.sum((y - np.mean(y)) ** 2))
         )
 
-        errors = xr.merge([rmse, pearson, mape])
-        all_sample_errors.append(errors)
+    def np_rmse(Y_actual, Y_predicted):
+        return np.sqrt(np.mean((Y_predicted - Y_actual) ** 2))
 
-    all_errors = xr.merge(all_sample_errors)
-    return all_errors
+    errors = []
+    for func, funcname in zip(
+        [np_mape, np_pearson, np_rmse], ["mape", "pearson-r", "rmse"]
+    ):
+        errors.append(
+            preds.groupby(site_dim)
+            .apply(
+                lambda g: g.groupby(horizon_dim).apply(
+                    lambda sg: func(sg["obs"], sg["sim"])
+                )
+            )
+            .rename(funcname)
+        )
+
+    return xr.merge(errors).expand_dims(model=[model_str]).expand_dims(variable=[var])
 
 
 def normalize_data(

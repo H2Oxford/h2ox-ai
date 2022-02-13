@@ -1,18 +1,18 @@
-import socket
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, Optional, Tuple
 from pathlib import Path
+from typing import Any, DefaultDict, Dict, List, Optional, Tuple
+
 import numpy as np
 import torch
 import xarray as xr
+from loguru import logger
+from sacred import Experiment
 from torch import nn, optim
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
-from loguru import logger
 
 from h2ox.ai.dataset.dataset import FcastDataset
 from h2ox.ai.train_utils import get_exponential_weights
-from sacred import Experiment
 
 
 def weighted_mse_loss(
@@ -63,7 +63,7 @@ def _save_weights_and_optimizer(
         torch.save(optimizer.state_dict(), str(optimizer_path))
     else:
         logger.info(
-            f"No run_dir found in experiment observers. Not saving model or optimizer state."
+            "No run_dir found in experiment observers. Not saving model or optimizer state."
         )
 
 
@@ -283,9 +283,10 @@ def _eval_data_to_ds(
     sample = np.concatenate(eval_data["sample"], axis=0)
     time = np.concatenate(eval_data["time"], axis=0)
     init_time = np.concatenate(eval_data["init_time"], axis=0)
+
     coords = {
         time_dim: init_time,
-        horizon_dim: np.arange(sim.shape[-1] if sim.ndim > 1 else 1),
+        horizon_dim: np.arange(1, sim.shape[-1] + 1 if sim.ndim > 1 else 1),
     }
     ds = xr.Dataset(
         {
@@ -330,12 +331,12 @@ def train_validation_test_split(
     Returns:
         Tuple[FcastDataset, ...]: train, validation, test datasets
     """
-    train_start_date = cfg["dataset_parameters"]["train_start_date"]
-    train_end_date = cfg["dataset_parameters"]["train_end_date"]
-    val_start_date = cfg["dataset_parameters"]["val_start_date"]
-    val_end_date = cfg["dataset_parameters"]["val_end_date"]
-    test_start_date = cfg["dataset_parameters"]["test_start_date"]
-    test_end_date = cfg["dataset_parameters"]["test_end_date"]
+    train_start_date = cfg["train_start_date"]
+    train_end_date = cfg["train_end_date"]
+    val_start_date = cfg["val_start_date"]
+    val_end_date = cfg["val_end_date"]
+    test_start_date = cfg["test_start_date"]
+    test_end_date = cfg["test_end_date"]
 
     # SEQUENTIAL = train from 1:N; validation from N:-1
     # (NOTE: INDEXED BY TIME NOT SPACE - first sort the index_df by time)
