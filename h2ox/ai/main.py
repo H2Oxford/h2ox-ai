@@ -7,11 +7,13 @@ TODO:
 Returns:
     [type]: [description]
 """
+import os
 from pathlib import Path
 
 import torch
 from loguru import logger
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
 from h2ox.ai.dataset import DatasetFactory
 from h2ox.ai.experiment import ex
@@ -22,6 +24,7 @@ from h2ox.ai.train import initialise_training, test, train, train_validation_tes
 
 @ex.automain
 def main(
+    _run,
     dataset_parameters: dict,
     data_parameters: dict,
     model_parameters: dict,
@@ -64,6 +67,11 @@ def main(
         dropout=model_parameters["dropout"],
     )
 
+    # setup tensorboard writer
+    writer = SummaryWriter(
+        os.path.join(os.getcwd(), "experiments", "tensorboard", _run._id)
+    )
+
     # # train
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     optimizer, scheduler, loss_fn = initialise_training(
@@ -75,7 +83,9 @@ def main(
         train_dl,
         optimizer=optimizer,
         scheduler=scheduler,
+        writer=writer,
         loss_fn=loss_fn,
+        log_every_n_steps=training_parameters["log_every_n_steps"],
         epochs=training_parameters["n_epochs"],
         val_dl=val_dl,
         validate_every_n=training_parameters["validate_every_n"],
@@ -92,6 +102,8 @@ def main(
     logger.info("Generate Preds")
     pred_ds = test(model, val_dl)
     pred_ds.to_netcdf("./preds_interim.nc")
+
+    writer.close()
 
     # # test
     """ TODO: change test_dd to come from split above
