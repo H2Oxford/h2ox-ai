@@ -416,7 +416,7 @@ class FcastDataset(Dataset):
         target_times = np.array(
             [
                 (date + timedelta(days=ii)).to_numpy()
-                for ii in range(1, data["y"].shape[0])
+                for ii in range(1, data["y"].shape[0] + 1)
             ]
         ).astype(float)
         # site has to be stored as int
