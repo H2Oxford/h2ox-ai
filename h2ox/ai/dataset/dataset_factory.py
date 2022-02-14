@@ -1,4 +1,4 @@
-from typing import Dict, Any, Union, Tuple, List
+from typing import Dict, Any, Union
 import os
 from datetime import datetime
 from pydoc import locate
@@ -8,7 +8,6 @@ import xarray as xr
 import yaml
 from loguru import logger
 from torch.utils.data import Dataset
-import numpy as np
 
 # def convert_pathlib_opts_to_str(data: Dict[str, Union[Any, Dict]]):
 #     # https://stackoverflow.com/a/1254499/9940782
@@ -20,35 +19,6 @@ import numpy as np
 #         return type(data)(map(convert, data))
 #     else:
 #         return data
-
-
-def flatten_dict_for_comparison(d: dict, parent_key='', sep='_'):
-    items = []
-    for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, collections.MutableMapping):
-            items.extend(flatten_dict_for_comparison(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
-
-def compare_dicts(
-    new_cfg: dict,
-    reference_cfg: dict,
-) -> Tuple[List[str]]:
-    # note assumes dict already flattened 
-    new_keys = []
-    different_values = []
-    for k, v in new_cfg.items():
-        if k not in reference_cfg.keys():
-            new_keys.append(f"New key: {k} in config")
-        else:
-            if not (new_cfg[k] == reference_cfg[k]):
-                different_values.append(f"{k} (new != original): {new_cfg[k]} != {reference_cfg[k]}")
-    missing_keys_list = np.array(reference_cfg.keys())[~np.isin(reference_cfg.keys(), new_cfg.keys())]
-    missing_keys = [f"Missing key: {k} from config" for k in missing_keys_list]
-
-    return new_keys, missing_keys, different_values
 
 
 class DatasetFactory:
@@ -78,14 +48,6 @@ class DatasetFactory:
                 return True
             else:
                 logger.info("Cache does not match spec. Rebuilding data.")
-                # https://stackoverflow.com/a/41808831/9940782
-                new_cfg = dict(flatten_dict_for_comparison(self.cfg).items())
-                reference_cfg = dict(flatten_dict_for_comparison(cache_cfg).items())
-                new_keys, missing_keys, different_values = compare_dicts(new_cfg, reference_cfg)
-                logger.info(f"New keys:\n {new_keys}")
-                logger.info(f"Missing keys:\n {missing_keys}")
-                diff_values_repr = '\n'.join(different_values)
-                logger.info(f"Different Values:\n {diff_values_repr}")
                 return False
         else:
             logger.info("Cache does not exists, building data.")

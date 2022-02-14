@@ -48,8 +48,7 @@ def test_creation_of_all_test_data(cfg: Dict[str, Any]):
 
 
 if __name__ == "__main__":
-    # yml_path = Path("tests/test_conf.yaml")
-    yml_path = Path("conf.yaml")
+    yml_path = Path("tests/test_conf.yaml")
     with yml_path.open("r") as fp:
         yaml = YAML(typ="safe")
         cfg = yaml.load(fp)

@@ -3,6 +3,8 @@
 experiments/**/*.txt
 experiments/**/*.json
 experiments/_sources
+experiments/sacred/*
+experiments/tensorboard/*
 data/cache.nc
 data/cache.yaml
 data/raw/h2ox_reservoirs.csv

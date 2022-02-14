@@ -7,40 +7,49 @@ TODO:
 Returns:
     [type]: [description]
 """
+import os
+from glob import glob
 from pathlib import Path
 
 import torch
 from loguru import logger
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
+from h2ox.ai.dataset.dataset import train_validation_test_split
 from h2ox.ai.dataset import DatasetFactory
+from h2ox.ai.dataset.utils import calculate_errors
 from h2ox.ai.experiment import ex
-from h2ox.ai.experiment_utils import plot_losses
 from h2ox.ai.model import initialise_model
-from h2ox.ai.train import initialise_training, train, train_validation_test_split
+from h2ox.ai.plots import plot_horizon_losses, plot_losses, plot_timeseries_over_horizon
+from h2ox.ai.train import initialise_training, test, train
 
 
 @ex.automain
 def main(
+    _run,
     dataset_parameters: dict,
     data_parameters: dict,
     model_parameters: dict,
     training_parameters: dict,
 ) -> int:
-    # load data
-    Path.cwd() / "data"
+
+    # make temporary path if not exists
+    if not os.path.exists("tmp"):
+        os.mkdir(os.path.join(os.getcwd(), "tmp"))
 
     dd = DatasetFactory(
         {"data_parameters": data_parameters, "dataset_parameters": dataset_parameters}
     ).build_dataset()
 
     # train-validation split
-    train_dd, validation_dd = train_validation_test_split(
+    train_dd, validation_dd, test_dd = train_validation_test_split(
         dd,
-        random_val_split=training_parameters["random_val_split"],
-        validation_proportion=0.8,
+        cfg=dataset_parameters,
+        time_dim="date",
     )
 
+    # build dataloaders
     train_dl = DataLoader(
         train_dd,
         batch_size=training_parameters["batch_size"],
@@ -49,6 +58,12 @@ def main(
     )
     val_dl = DataLoader(
         validation_dd,
+        batch_size=training_parameters["batch_size"],
+        shuffle=False,
+        num_workers=training_parameters["num_workers"],
+    )
+    test_dl = DataLoader(
+        test_dd,
         batch_size=training_parameters["batch_size"],
         shuffle=False,
         num_workers=training_parameters["num_workers"],
@@ -64,7 +79,15 @@ def main(
         dropout=model_parameters["dropout"],
     )
 
-    # # train
+    # force float
+    model = model.to(torch.float)
+
+    # setup tensorboard writer
+    writer = SummaryWriter(
+        os.path.join(os.getcwd(), "experiments", "tensorboard", f"tb-{_run._id}")
+    )
+
+    # train
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     optimizer, scheduler, loss_fn = initialise_training(
         model, device=device, loss_rate=1e-3
@@ -75,71 +98,57 @@ def main(
         train_dl,
         optimizer=optimizer,
         scheduler=scheduler,
+        writer=writer,
         loss_fn=loss_fn,
+        log_every_n_steps=training_parameters["log_every_n_steps"],
+        checkpoint_every_n=training_parameters["checkpoint_every_n"],
         epochs=training_parameters["n_epochs"],
         val_dl=val_dl,
         validate_every_n=training_parameters["validate_every_n"],
         experiment=ex,
     )
 
-    # get filepath for experiment dir from the Sacred Experiment
-    # TODO(tl): is ex a global variable?
-    filepath = Path(ex.observers[0].dir) if ex.observers[0].dir is not None else None
-    if filepath is not None:
-        logger.info(f"Saving losses.png to {filepath}")
-        plot_losses(filepath=filepath, losses=losses, val_losses=val_losses)
+    filepath = Path("tmp")
 
-    # # test
-    """ TODO: change test_dd to come from split above
-    if eval_test:
-        # load dataset
-        test_dd = FcastDataset(
-            target=test_target,  # target,
-            history=test_history.sel(location=sites),  # history,
-            forecast=test_forecast,  # forecast,
-            encode_doy=encode_doy,
-            historical_seq_len=seq_len,
-            future_horizon=future_horizon,
-            target_var=target_var,
-            mode="test",
-            history_variables=history_variables,
-            forecast_variables=forecast_variables,
-            include_ohe=include_ohe,
-        )
+    logger.info("Archiving model and optimizer checkpoints")
+    ex.add_artifact(filepath / f"model_epoch{training_parameters['n_epochs']-1:03d}.pt")
+    ex.add_artifact(
+        filepath / f"optimizer_state_epoch{training_parameters['n_epochs']-1:03d}.pt"
+    )
 
-        test_dl = DataLoader(
-            test_dd, batch_size=batch_size, shuffle=False, num_workers=num_workers
-        )
-
-    else:
-        test_dl = val_dl
-
+    logger.info("Calculating test performance")
     preds = test(model, test_dl)
-    # preds = unnormalize_preds(preds, target_mn, target_std, target=target_var, sample=)
-    errors = calculate_errors(preds, target_var, model_str="s2s2s")
+    errors = calculate_errors(
+        preds,
+        var="Y",
+        site_dim="sample",
+        horizon_dim="step",
+        model_str="s2s",
+    )
 
-    print(errors)
+    logger.info(f"Generating test performance figures at {filepath}")
+    plot_losses(filepath=filepath, losses=losses, val_losses=val_losses)
+    plot_horizon_losses(filepath, error=errors["rmse"], identifier="rmse")
+    plot_horizon_losses(filepath, error=errors["pearson-r"], identifier="pearson-r")
+    plot_timeseries_over_horizon(filepath=filepath, preds=preds)
 
+    logger.info(f"Writing prediction and error datasets to .nc at {filepath}")
+    errors.to_netcdf(filepath / "errors.nc")
+    preds.to_netcdf(filepath / "preds.nc")
 
-    # if how_well_do_we_do_on_train_data:
-    #     train_preds = test(model, train_dl)
-    #     train_errors = calculate_errors(train_preds, target_var, model_str="s2s2s")
+    logger.info("Archiving plot and data artifacts")
+    artifacts = glob(str(filepath / "*"))
+    select_artifacts = [
+        f for f in artifacts if "model" not in f or "optimizer" not in f
+    ]
+    for artifact in select_artifacts:
+        ex.add_artifact(artifact)
 
-    if filepath is not None:
-        logger.info(f"Saving horizon_losses.png to {filepath}")
-        plot_horizon_losses(filepath, error=errors["rmse"], identifier="rmse")
-        plot_horizon_losses(filepath, error=errors["pearson-r"], identifier="pearson-r")
+    # cleanup
+    if training_parameters["cleanup"]:
+        for artifact in artifacts:
+            os.remove(artifact)
 
-        logger.info(f"Saving *_demo_timeseries.png.png to {filepath}")
-        plot_timeseries_over_horizon(filepath=filepath, preds=preds)
-
-        logger.info(f"Saving errors.nc to {filepath}")
-        errors.to_netcdf(filepath / "errors.nc")
-
-        logger.info(f"Saving preds.nc to {filepath}")
-        preds.to_netcdf(filepath / "preds.nc")
-
-    # TODO: create a summary table and save to .tex file ?
-    """
+    writer.close()
 
     return 1
