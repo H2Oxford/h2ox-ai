@@ -1,6 +1,6 @@
 from collections import defaultdict
 from datetime import timedelta
-from typing import DefaultDict, Dict, List, Optional, Tuple, Union
+from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -8,14 +8,11 @@ import xarray as xr
 from loguru import logger
 from pandas.api.types import is_numeric_dtype
 from torch import Tensor
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 
 from h2ox.ai.dataset.utils import assymetric_boolean_dilate, group_consecutive_nans
 
 
-# ASSUMES: "time" is the named dimension/index column
-# ASSUMES: assign doy to all datasets
-# TODO: add one hot encoding of basin id
 class FcastDataset(Dataset):
     def __init__(
         self,
@@ -453,3 +450,50 @@ def print_instance(dd: FcastDataset, instance: int):
             if not isinstance(dd[instance][k], dict)
         ],
     )
+
+
+def train_validation_test_split(
+    train_dataset: FcastDataset,
+    cfg: Dict[str, Any],
+    time_dim: str = "date",
+) -> Tuple[FcastDataset, ...]:
+    """Create train, validation, test dataset objects as a subset of original
+
+    Args:
+        train_dataset (FcastDataset): [description]
+        cfg (Dict[str, Any]): [description]
+        time_dim (str, optional): [description]. Defaults to "date".
+
+    Returns:
+        Tuple[FcastDataset, ...]: train, validation, test datasets
+    """
+    train_start_date = cfg["train_start_date"]
+    train_end_date = cfg["train_end_date"]
+    val_start_date = cfg["val_start_date"]
+    val_end_date = cfg["val_end_date"]
+    test_start_date = cfg["test_start_date"]
+    test_end_date = cfg["test_end_date"]
+
+    index_df = train_dataset._get_meta_dataframe()
+    index_df = index_df.sort_values(time_dim)
+
+    index_df = (
+        index_df.reset_index().rename(columns={"index": "pt_index"}).set_index(time_dim)
+    )
+
+    train_indexes = index_df.loc[train_start_date:train_end_date]["pt_index"]
+    val_indexes = index_df.loc[val_start_date:val_end_date]["pt_index"]
+    test_indexes = index_df.loc[test_start_date:test_end_date]["pt_index"]
+
+    assert not any(
+        np.isin(train_indexes, test_indexes)
+    ), "Leakage: train indexes in test data"
+    assert not any(
+        np.isin(val_indexes, test_indexes)
+    ), "Leakage: validation indexes in test data"
+
+    train_dd = Subset(train_dataset, train_indexes)
+    validation_dd = Subset(train_dataset, val_indexes)
+    test_dd = Subset(train_dataset, test_indexes)
+
+    return train_dd, validation_dd, test_dd

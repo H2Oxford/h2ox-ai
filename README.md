@@ -59,6 +59,12 @@ To use this repo, simply clone it and then pip install it.
     # install pre-commit
     pre-commit install
 
+### Test Data
+
+A sample cached dataset and `.yaml` file is available at [gs://oxeo-public/wave2web/h2ox-ai](https://console.cloud.google.com/storage/browser/oxeo-public/wave2web/h2ox-ai).
+This data can be copied to `data/` to begin experimenting with the repository without regenerating the full dataset.
+`basins.geojson` describes the upstream areas of each of the 6 test reservoirs, and can be used to regenerate the input data.
+
 
 ## Training
 
