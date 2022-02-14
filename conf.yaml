@@ -121,7 +121,10 @@ training_parameters:
     # Training Parameters
     num_workers: 4
     random_val_split: false
+    log_every_n_steps: 10
+    checkpoint_every_n: 1
     eval_test: false
     batch_size: 100
-    n_epochs: 100
-    validate_every_n: 3
+    n_epochs: 2
+    validate_every_n: 1
+    cleanup: false

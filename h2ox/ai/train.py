@@ -44,30 +44,18 @@ def initialise_training(
 
 def _save_weights_and_optimizer(
     epoch: int,
-    experiment: Experiment,
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
+    save_path: str = "tmp",
 ):
-    run_dir = (
-        Path(experiment.observers[0].dir)
-        if experiment.observers[0].dir is not None
-        else None
-    )
 
-    if run_dir is not None:
-        logger.info(f"Saving model_epoch{epoch:03d}.pt to {run_dir.as_posix()}")
-        weight_path = run_dir / f"model_epoch{epoch:03d}.pt"
-        torch.save(model.state_dict(), str(weight_path))
+    weight_path = Path(save_path) / f"model_epoch{epoch:03d}.pt"
+    torch.save(model.state_dict(), weight_path)
 
-        logger.info(
-            f"Saving optimizer_state_epoch{epoch:03d}.pt to {run_dir.as_posix()}"
-        )
-        optimizer_path = run_dir / f"optimizer_state_epoch{epoch:03d}.pt"
-        torch.save(optimizer.state_dict(), str(optimizer_path))
-    else:
-        logger.info(
-            "No run_dir found in experiment observers. Not saving model or optimizer state."
-        )
+    optimizer_path = Path(save_path) / f"optimizer_state_epoch{epoch:03d}.pt"
+    torch.save(optimizer.state_dict(), str(optimizer_path))
+
+    return weight_path, optimizer_path
 
 
 def load_model_optimizer_from_checkpoint(
@@ -98,6 +86,7 @@ def train(
     optimizer: Any,
     loss_fn: nn.Module,
     log_every_n_steps: int,
+    checkpoint_every_n: int = 5,
     writer: Optional[SummaryWriter] = None,
     scheduler: Optional[Any] = None,
     epochs: int = 5,
@@ -173,6 +162,7 @@ def train(
             )
 
         writer.add_scalar("Loss/train", epoch_loss, epoch)
+        ex.log_scalar("Loss/train", epoch_loss, epoch)
 
         # Scheduler for reducing the learning rate loss
         if scheduler is not None:
@@ -185,16 +175,15 @@ def train(
                 val_loss = validate(
                     model, log_every_n_steps, val_dl, loss_fn, epoch, writer
                 )
-                print(f"-- Validation Loss: {val_loss:.3f} --")
                 all_val_losses.append(val_loss)
 
-        # cache_model
-        _save_weights_and_optimizer(
-            epoch=epoch,
-            experiment=experiment,
-            model=model,
-            optimizer=optimizer,
-        )
+        # checkpoint training or save final model
+        if (epoch % checkpoint_every_n == 0) or (epoch == epochs - 1):
+            _save_weights_and_optimizer(
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+            )
 
     return (all_losses, all_val_losses)
 
@@ -269,15 +258,22 @@ def validate(
     valid_loss = np.mean(losses)
 
     writer.add_scalar("Loss/val", valid_loss, epoch)
+    ex.log_scalar("Loss/val", valid_loss, epoch)
+
     for kk, vv in scalar_dict.items():
+        log_data = dict(
+            zip(
+                [str(ii) for ii in range(1, target_horizon, log_every_n_steps)],
+                np.array(vv).squeeze(),
+            )
+        )
+
+        for kk2, vv2 in log_data.items():
+            ex.log_scalar(f"Metric/{kk}/{kk2}", vv2, epoch)
+
         writer.add_scalars(
-            kk,
-            dict(
-                zip(
-                    [str(ii) for ii in range(1, target_horizon, log_every_n_steps)],
-                    np.array(vv).squeeze(),
-                )
-            ),
+            f"Metrics/{kk}",
+            log_data,
             epoch,
         )
 
@@ -314,7 +310,6 @@ def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
         eval_data["time"].append(target_times)
         eval_data["init_time"].append(forecast_init_times)
 
-    print("Converting to xarray object")
     ds = _eval_data_to_ds(eval_data, assign_sample=False)
     return ds
 
