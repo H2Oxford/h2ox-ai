@@ -19,12 +19,8 @@ from torch.utils.tensorboard import SummaryWriter
 from h2ox.ai.dataset import DatasetFactory
 from h2ox.ai.dataset.utils import calculate_errors
 from h2ox.ai.experiment import ex
-from h2ox.ai.experiment_utils import (
-    plot_horizon_losses,
-    plot_losses,
-    plot_timeseries_over_horizon,
-)
 from h2ox.ai.model import initialise_model
+from h2ox.ai.plots import plot_horizon_losses, plot_losses, plot_timeseries_over_horizon
 from h2ox.ai.train import initialise_training, test, train, train_validation_test_split
 
 
