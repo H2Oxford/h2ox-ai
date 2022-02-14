@@ -4,7 +4,6 @@ from typing import DefaultDict, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import torch
 import xarray as xr
 from loguru import logger
 from pandas.api.types import is_numeric_dtype
@@ -251,10 +250,10 @@ class FcastDataset(Dataset):
         for ii, (date, site) in enumerate(idx):
 
             self.all_data[ii] = {
-                "x_d": self.historic[ii, ...],
-                "x_f": self.forecast[ii, ...],
-                "x_ff": self.future[ii, ...],
-                "y": self.targets[ii, ...],
+                "x_d": self.historic[ii, ...].astype(np.float32),
+                "x_f": self.forecast[ii, ...].astype(np.float32),
+                "x_ff": self.future[ii, ...].astype(np.float32),
+                "y": self.targets[ii, ...].astype(np.float32),
             }
 
             self.sample_lookup[ii] = (site, date)
@@ -431,14 +430,16 @@ class FcastDataset(Dataset):
 
         data["meta"] = meta
 
+        """
         # CONVERT TO torch.Tensor OBJECTS
         for key in data.keys():
             if key != "meta":
                 if isinstance(data[key], dict):
                     for key2 in data[key]:
-                        data[key][key2] = torch.tensor(data[key][key2]).float()
+                        data[key][key2] = data[key][key2].astype(np.float32)
                 else:
-                    data[key] = torch.tensor(data[key]).float()
+                    data[key] = data[key].astype(np.float32)
+        """
 
         return data
 
