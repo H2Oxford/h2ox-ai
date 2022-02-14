@@ -1,4 +1,4 @@
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Tuple, List
 import os
 from datetime import datetime
 from pydoc import locate
@@ -8,7 +8,7 @@ import xarray as xr
 import yaml
 from loguru import logger
 from torch.utils.data import Dataset
-
+import numpy as np
 
 # def convert_pathlib_opts_to_str(data: Dict[str, Union[Any, Dict]]):
 #     # https://stackoverflow.com/a/1254499/9940782
@@ -20,6 +20,53 @@ from torch.utils.data import Dataset
 #         return type(data)(map(convert, data))
 #     else:
 #         return data
+
+
+def flatten_dict_for_comparison(
+    d: dict, parent_key: str = "", sep: str = "_"
+) -> Dict[str, Any]:
+    """Flattens nested dictionaries using `sep` to create keys
+
+    Args:
+        d (dict): input dictionary
+        parent_key (str, optional): [description]. Defaults to ''.
+        sep (str, optional): how to separate strings in dict keys. Defaults to '_'.
+
+    Returns:
+        Dict[str, Any]: Flattened dictionary with original values but with
+            keys separated by `sep`
+    """
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, collections.MutableMapping):
+            items.extend(flatten_dict_for_comparison(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
+def compare_dicts(
+    new_cfg: dict,
+    reference_cfg: dict,
+) -> Tuple[List[str]]:
+    # note assumes dict already flattened
+    new_keys = []
+    different_values = []
+    for k, v in new_cfg.items():
+        if k not in reference_cfg.keys():
+            new_keys.append(f"New key: {k} in config")
+        else:
+            if not (new_cfg[k] == reference_cfg[k]):
+                different_values.append(
+                    f"{k} (new != original): {new_cfg[k]} != {reference_cfg[k]}"
+                )
+    missing_keys_list = np.array(reference_cfg.keys())[
+        ~np.isin(reference_cfg.keys(), new_cfg.keys())
+    ]
+    missing_keys = [f"Missing key: {k} from config" for k in missing_keys_list]
+
+    return new_keys, missing_keys, different_values
 
 
 class DatasetFactory:
@@ -49,6 +96,16 @@ class DatasetFactory:
                 return True
             else:
                 logger.info("Cache does not match spec. Rebuilding data.")
+                # https://stackoverflow.com/a/41808831/9940782
+                new_cfg = dict(flatten_dict_for_comparison(self.cfg).items())
+                reference_cfg = dict(flatten_dict_for_comparison(cache_cfg).items())
+                new_keys, missing_keys, different_values = compare_dicts(
+                    new_cfg, reference_cfg
+                )
+                logger.info(f"New keys:\n {new_keys}")
+                logger.info(f"Missing keys:\n {missing_keys}")
+                diff_values_repr = "\n".join(different_values)
+                logger.info(f"Different Values:\n {diff_values_repr}")
                 return False
         else:
             logger.info("Cache does not exists, building data.")
@@ -95,7 +152,17 @@ class DatasetFactory:
 
         return ptdataset
 
-    def _build_data(self, merge: bool = True):
+    def _build_data(self, merge: bool = True) -> Union[xr.Dataset, List[xr.Dataset]]:
+        """For each data unit in the config (`self.cfg["data_units"]`),
+        build the data and merge it into a single dataset.
+
+        Args:
+            merge (bool, optional): Merge different data_units into one xr.Dataset.
+                Defaults to True.
+
+        Returns:
+            Union[xr.Dataset, List[xr.Dataset, ...]]: Dataset or List of Dataset objects
+        """
 
         sdt = datetime.strptime(self.cfg["start_data_date"], "%Y-%m-%d")
         edt = datetime.strptime(self.cfg["end_data_date"], "%Y-%m-%d")
@@ -104,7 +171,9 @@ class DatasetFactory:
 
         # data_unit_options: Dict[str, Any]
         for data_unit_name, data_unit_options in self.cfg["data_units"].items():
+            # the class for the data unit
             data_unit_instance = locate(data_unit_options["class"])()
+            # each data unit has its own `.build()` function
             array = data_unit_instance.build(
                 start_datetime=sdt,
                 end_datetime=edt,
