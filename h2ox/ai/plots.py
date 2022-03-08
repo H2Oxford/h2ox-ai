@@ -25,12 +25,15 @@ def plot_losses(
 
 
 def plot_horizon_losses(
-    filepath: Path, error: xr.DataArray, identifier: Optional[str] = None
+    filepath: Path,
+    error: xr.DataArray,
+    identifier: Optional[str] = None,
+    site_dim: Optional[str] = "site",
 ):
     # make the forecast horizon plot
     f, ax = plt.subplots(figsize=(12, 6))
-    for sample in error.sample.values:
-        error.sel(sample=sample).squeeze().plot(ax=ax, label=sample)
+    for site in error[site_dim].values:
+        error.sel({site_dim: site}).squeeze().plot(ax=ax, label=site)
 
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)
@@ -47,10 +50,12 @@ def plot_horizon_losses(
     plt.close("all")
 
 
-def plot_timeseries_over_horizon(filepath: Path, preds: xr.Dataset):
-    for sample in np.unique(preds.sample.values):
+def plot_timeseries_over_horizon(
+    filepath: Path, preds: xr.Dataset, site_dim: Optional[str] = "site"
+):
+    for site in np.unique(preds[site_dim].values):
         # make the timeseries plots
-        preds_ = preds.sel({"date": preds["sample"] == sample})
+        preds_ = preds.sel({site_dim: site})
         f, axs = plt.subplots(
             3, 4, figsize=(6 * 4, 2 * 3), tight_layout=True, sharey=True, sharex=True
         )
@@ -69,6 +74,6 @@ def plot_timeseries_over_horizon(filepath: Path, preds: xr.Dataset):
 
         ax.legend()
 
-        f.suptitle(f"{sample} Timeseries")
-        f.savefig(filepath / f"{sample}_demo_timeseries.png")
+        f.suptitle(f"{site} Timeseries")
+        f.savefig(filepath / f"{site}_demo_timeseries.png")
         plt.close("all")

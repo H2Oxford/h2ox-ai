@@ -145,7 +145,44 @@ class FcastDataset(Dataset):
             {"date-site": ("date", "global_sites")}
         )
 
-    def _reshape_data_ohe(self, data):
+    def _reshape_data_multi(self, data, valid_dates):
+
+        historic = (
+            self._get_historic_data(data)
+            .drop("steps")
+            .stack({"sites-variable": ("global_sites", "variable")})
+            .transpose("date", "historic_roll", "sites-variable")
+        )
+
+        forecast = (
+            self._get_forecast_data(data)
+            .stack({"sites-variable": ("global_sites", "variable")})
+            .transpose("date", "steps", "sites-variable")
+        )
+
+        future = (
+            self._get_future_data(data)
+            .stack({"sites-variable": ("global_sites", "variable")})
+            .transpose("date", "steps", "sites-variable")
+        )
+
+        targets = (
+            self._get_target_data(data)
+            .drop("steps")
+            .stack({"sites-variable": ("global_sites", "variable")})
+            .transpose("date", "target_roll", "sites-variable")
+        )
+
+        idxs = historic["date"].data[np.isin(historic["date"].data, valid_dates)]
+
+        self.historic = historic.sel({"date": idxs}).data
+        self.forecast = forecast.sel({"date": idxs}).data
+        self.future = future.sel({"date": idxs}).data
+        self.targets = targets.sel({"date": idxs}).data
+
+        return idxs
+
+    def _reshape_data_ohe(self, data, valid_dates):
 
         historic = self._onehotencode(
             self._get_historic_data(data).drop("steps"), "historic_roll"
@@ -159,11 +196,39 @@ class FcastDataset(Dataset):
             self._get_future_data(data), "steps"
         )  # DATES*sites x STEPS x var+ohe
 
-        target = self._onehotencode(
+        targets = self._onehotencode(
             self._get_target_data(data).drop("steps"), "target_roll"
         )  # DATES*sites x STEPS x var+ohe
 
-        return historic, forecast, future, target
+        idxs = historic["date-site"].data[np.isin(historic["date"].data, valid_dates)]
+
+        self.historic = (
+            historic.sel({"date-site": idxs})
+            .to_array()
+            .transpose("date-site", "historic_roll", "variable")
+            .data
+        )
+        self.forecast = (
+            forecast.sel({"date-site": idxs})
+            .to_array()
+            .transpose("date-site", "steps", "variable")
+            .data
+        )
+        self.future = (
+            future.sel({"date-site": idxs})
+            .to_array()
+            .transpose("date-site", "steps", "variable")
+            .data
+        )
+        self.targets = (
+            targets.sel({"date-site": idxs})
+            .to_array()
+            .transpose("date-site", "target_roll", "variable")
+            .sel({"variable": self.target_var})
+            .data
+        )
+
+        return idxs
 
     def _interpolate_1d(self, data):
         for var in list(data.keys()):
@@ -186,6 +251,8 @@ class FcastDataset(Dataset):
         self.all_data: DefaultDict[int, Dict] = defaultdict(dict)
         self.sample_lookup: Dict[int, Tuple[str, pd.Timestamp]] = {}
 
+        self.site_keys = data["global_sites"].values
+
         # TODO: but are you sure you want to do this here? you want to normalise the data
         # before so you can use the TRAIN mean/std for the TEST data
         def normalise_func(arr):
@@ -205,38 +272,13 @@ class FcastDataset(Dataset):
         data = self._interpolate_1d(data)
 
         if self.ohe_or_multi == "multi":
-            raise NotImplementedError
+            logger.info("soft data transforms - reshape data multi-target")
+            idxs = self._reshape_data_multi(data, valid_dates)
+            self.metadata_columns = ["date"]
         elif self.ohe_or_multi == "ohe":
             logger.info("soft data transforms - reshape with one-hot-encoding")
-            historic, forecast, future, targets = self._reshape_data_ohe(data)
-
-        idx = historic["date-site"].data[np.isin(historic["date"].data, valid_dates)]
-
-        self.historic = (
-            historic.sel({"date-site": idx})
-            .to_array()
-            .transpose("date-site", "historic_roll", "variable")
-            .data
-        )
-        self.forecast = (
-            forecast.sel({"date-site": idx})
-            .to_array()
-            .transpose("date-site", "steps", "variable")
-            .data
-        )
-        self.future = (
-            future.sel({"date-site": idx})
-            .to_array()
-            .transpose("date-site", "steps", "variable")
-            .data
-        )
-        self.targets = (
-            targets.sel({"date-site": idx})
-            .to_array()
-            .transpose("date-site", "target_roll", "variable")
-            .sel({"variable": self.target_var})
-            .data
-        )
+            idxs = self._reshape_data_ohe(data, valid_dates)
+            self.metadata_columns = ["date", "site"]
 
         logger.info(
             f"soft data transforms - data shape - historic:{self.historic.shape}; forecast:{self.forecast.shape}; future:{self.future.shape}; targets:{self.targets.shape}"
@@ -244,7 +286,7 @@ class FcastDataset(Dataset):
 
         # SAVE ALL DATA to attribute
         logger.info("soft data transforms - build data Dictionary")
-        for ii, (date, site) in enumerate(idx):
+        for ii, idx in enumerate(idxs):
 
             self.all_data[ii] = {
                 "x_d": self.historic[ii, ...].astype(np.float32),
@@ -253,9 +295,12 @@ class FcastDataset(Dataset):
                 "y": self.targets[ii, ...].astype(np.float32),
             }
 
-            self.sample_lookup[ii] = (site, date)
+            if isinstance(idx, tuple):
+                self.sample_lookup[ii] = dict(zip(self.metadata_columns, idx))
+            else:
+                self.sample_lookup[ii] = dict(zip(self.metadata_columns, (idx,)))
 
-        self.n_samples = len(idx)
+        self.n_samples = len(idxs)
 
     def _get_historic_data(
         self,
@@ -384,19 +429,18 @@ class FcastDataset(Dataset):
 
         return history, fcast, future
 
-    def get_meta(self, idx: int) -> Tuple[str, pd.Timestamp]:
-        return self.sample_lookup[idx]
-
     def _get_meta_dataframe(self) -> pd.DataFrame:
         return pd.DataFrame(
-            self.sample_lookup.values(), index=self.sample_lookup.keys()
-        ).rename({0: "location", 1: self.time_dim}, axis=1)
+            self.sample_lookup.values(),
+            index=self.sample_lookup.keys(),
+            columns=self.metadata_columns,
+        )
 
     def __getitem__(self, idx) -> Dict[str, Union[Tensor, Dict[str, Tensor]]]:
 
         data: Dict[str, pd.DataFrame] = self.all_data[idx]
 
-        site, date = self.sample_lookup[idx]
+        meta = self.sample_lookup[idx]
 
         if data == {}:
             return None
@@ -405,27 +449,29 @@ class FcastDataset(Dataset):
         #  NOTE: has to be in float format to play nicely with pytorch DataLoaders
         input_times = np.array(
             [
-                (date + timedelta(days=ii)).to_numpy()
+                (pd.to_datetime(meta["date"]) + timedelta(days=ii)).to_numpy()
                 for ii in range(-data["x_d"].shape[0], 0)
             ]
         ).astype(float)
         target_times = np.array(
             [
-                (date + timedelta(days=ii)).to_numpy()
+                (pd.to_datetime(meta["date"]) + timedelta(days=ii)).to_numpy()
                 for ii in range(1, data["y"].shape[0] + 1)
             ]
         ).astype(float)
-        # site has to be stored as int
-        site_encoding = {v: k for (k, v) in self.sites_dictionary.items()}[site]
 
-        meta = {  # noqa
+        meta_dict = {  # noqa
             "input_times": input_times,
             "target_times": target_times,
-            "site": np.array([site_encoding]),
             "index": np.array([idx]),
         }
 
-        data["meta"] = meta
+        if "site" in meta.keys():
+            meta_dict["site"] = np.array(
+                [{v: k for (k, v) in self.sites_dictionary.items()}[meta["site"]]]
+            )
+
+        data["meta"] = meta_dict
 
         """
         # CONVERT TO torch.Tensor OBJECTS
