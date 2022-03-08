@@ -28,7 +28,7 @@ In this way, this repo is extensible to new locations, and new data sources, in 
 
 H2Ox developed a Sequence-to-sequence-to-sequence LSTM model: a three-stage LSTM which 1) encodes historic meteorological forcing data into a latent hydrological state for each reservoir; 2) decodes over a forecast period, while continuing conditioning from forecast data; and 3) decodes further over a future period, with only trigonometic day-of-the-year features as input.
 
-<img alt="Sequence-to-sequence-to-sequence" width="800px" src="docs/img/seq2seq2seq.png" />
+<img alt="Sequence-to-sequence-to-sequence" width="800px" src="docs/img/s2s2s.png" />
 <sub><a href="https://github.com/lkulowski/LSTM_encoder_decoder">Source: L. Kulowski</a></sub>
 
 Several configurations are available for training this model.
