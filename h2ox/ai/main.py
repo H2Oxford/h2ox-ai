@@ -16,8 +16,8 @@ from loguru import logger
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from h2ox.ai.dataset.dataset import train_validation_test_split
 from h2ox.ai.dataset import DatasetFactory
+from h2ox.ai.dataset.dataset import train_validation_test_split
 from h2ox.ai.dataset.utils import calculate_errors
 from h2ox.ai.experiment import ex
 from h2ox.ai.model import initialise_model
@@ -121,9 +121,9 @@ def main(
     errors = calculate_errors(
         preds,
         var="Y",
-        site_dim="sample",
+        site_dim="site",
         horizon_dim="step",
-        model_str="s2s",
+        model_str="s2s-ohe",
     )
 
     logger.info(f"Generating test performance figures at {filepath}")

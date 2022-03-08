@@ -149,8 +149,10 @@ def validate(
 
     if isinstance(validation_dl.dataset, Subset):
         meta_lookup = validation_dl.dataset.dataset.sample_lookup
+        site_keys = validation_dl.dataset.dataset.site_keys
     else:
         meta_lookup = validation_dl.dataset.sample_lookup
+        site_keys = validation_dl.dataset.site_keys
 
     model.eval()
     pbar = tqdm(validation_dl, "Validation")
@@ -173,9 +175,7 @@ def validate(
         else:
             loss = loss_fn(yhat.squeeze(), y.squeeze())
 
-        samples, forecast_init_times, target_times = _process_metadata(
-            data, meta_lookup
-        )
+        eval_meta = _process_metadata(data, meta_lookup)
 
         # save the predictions and the observations
         obs = y.squeeze().detach().cpu().numpy()
@@ -184,19 +184,18 @@ def validate(
         # Create a dictionary of the results
         eval_data["obs"].append(obs)
         eval_data["sim"].append(sim)
-        eval_data["sample"].append(samples)
-        eval_data["time"].append(target_times)
-        eval_data["init_time"].append(forecast_init_times)
+        for kk, vv in eval_meta.items():
+            eval_data[kk].append(vv)
 
         losses.append(loss.detach().cpu().numpy())
 
-    ds = _eval_data_to_ds(eval_data, assign_sample=False)
-    ds = calculate_errors(ds, var="y")
+    ds = _eval_data_to_ds(eval_data, assign_sample=False, site_keys=site_keys)
+    ds = calculate_errors(ds, var="y", site_dim="site")
 
     target_horizon = ds["step"].shape[0]
 
     scalar_dict = (
-        ds.mean(dim="sample")
+        ds.mean(dim="site")
         .sel({"step": range(1, target_horizon, log_every_n_steps)})
         .to_dict()
     )
@@ -230,10 +229,13 @@ def validate(
 def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
+
     if isinstance(test_dl.dataset, Subset):
         meta_lookup = test_dl.dataset.dataset.sample_lookup
+        site_keys = test_dl.dataset.dataset.site_keys
     else:
         meta_lookup = test_dl.dataset.sample_lookup
+        site_keys = test_dl.dataset.site_keys
 
     eval_data = defaultdict(list)
     for data in tqdm(test_dl, "Running Evaluation"):
@@ -241,21 +243,20 @@ def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
         for key in [k for k in data.keys() if k != "meta"]:
             data[key] = data[key].to(device)
 
-        # get the metadata
-        samples, forecast_init_times, target_times = _process_metadata(
-            data, meta_lookup
-        )
+        yhat = model(data).to(device)
+        y = data["y"]
+
+        eval_meta = _process_metadata(data, meta_lookup)
 
         # save the predictions and the observations
-        obs = data["y"].squeeze().detach().cpu().numpy()
-        sim = model(data).squeeze().detach().cpu().numpy()
+        obs = y.squeeze().detach().cpu().numpy()
+        sim = yhat.squeeze().detach().cpu().numpy()
 
         # Create a dictionary of the results
         eval_data["obs"].append(obs)
         eval_data["sim"].append(sim)
-        eval_data["sample"].append(samples)
-        eval_data["time"].append(target_times)
-        eval_data["init_time"].append(forecast_init_times)
+        for kk, vv in eval_meta.items():
+            eval_data[kk].append(vv)
 
-    ds = _eval_data_to_ds(eval_data, assign_sample=False)
+    ds = _eval_data_to_ds(eval_data, assign_sample=False, site_keys=site_keys)
     return ds
