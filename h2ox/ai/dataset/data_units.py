@@ -398,3 +398,76 @@ class SynthTrigDoY(DataUnit):
         array = xr.merge(arrays)
 
         return array.expand_dims({"global_sites": global_sites})
+
+
+class SynthOnes(DataUnit):
+
+    """A dataunit for building synthetic day-of-year data."""
+
+    def build(
+        self,
+        start_datetime: datetime,
+        end_datetime: datetime,
+        site_mapper: Dict[str, str],
+        data_unit_name: str,
+        start_step: int,
+        end_step: int,
+        step_size: int,
+        **kwargs,
+    ) -> xr.DataArray:
+
+        global_sites = list(site_mapper.values())
+        
+        steps = range(start_step, end_step, step_size)
+
+        logger.info(f"{data_unit_name} - Building; synth Ones with {len(steps)} steps")
+
+        idx = pd.date_range(start_datetime, end_datetime, freq="d")
+        idx.name = "date"
+
+        cols = pd.TimedeltaIndex([timedelta(days=ii) for ii in steps], name="steps")
+
+        df = pd.DataFrame(data=1., index=idx, columns=cols)
+
+        array = df.unstack().to_xarray()
+        array.name = f"{data_unit_name}_ones"
+        array = array.to_dataset().expand_dims({"global_sites": global_sites})
+
+        return array
+    
+class SynthSeq(DataUnit):
+
+    """A dataunit for building synthetic day-of-year data."""
+
+    def build(
+        self,
+        start_datetime: datetime,
+        end_datetime: datetime,
+        site_mapper: Dict[str, str],
+        data_unit_name: str,
+        start_step: int,
+        end_step: int,
+        step_size: int,
+        **kwargs,
+    ) -> xr.DataArray:
+
+        global_sites = list(site_mapper.values())
+        
+        steps = range(start_step, end_step, step_size)
+
+        logger.info(f"{data_unit_name} - Building; synth sequence with {len(steps)} steps")
+
+        idx = pd.date_range(start_datetime, end_datetime, freq="d")
+        idx.name = "date"
+
+        cols = pd.TimedeltaIndex([timedelta(days=ii) for ii in steps], name="steps")
+        
+        data = np.repeat([np.arange(len(steps))],len(idx),axis=0)/len(steps)
+
+        df = pd.DataFrame(data=1., index=idx, columns=cols)
+
+        array = df.unstack().to_xarray()
+        array.name = f"{data_unit_name}_seq"
+        array = array.to_dataset().expand_dims({"global_sites": global_sites})
+
+        return array
