@@ -37,9 +37,9 @@ def initialise_training(
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
 
     # use MSE Loss function
-    loss_fn = nn.MSELoss().to(device)
+    # loss_fn = nn.MSELoss().to(device)
     # loss_fn = nn.SmoothL1Loss().to(device)
-    # loss_fn = weighted_mse_loss
+    loss_fn = weighted_mse_loss
 
     return optimizer, scheduler, loss_fn
 
@@ -55,6 +55,7 @@ def train(
     writer: Optional[SummaryWriter] = None,
     scheduler: Optional[Any] = None,
     epochs: int = 5,
+    epochs_loss_cliff: int = 5,
     val_dl: Optional[DataLoader] = None,
     validate_every_n: int = 3,
     catch_nans: bool = False,
@@ -87,7 +88,8 @@ def train(
 
             # calculate loss, maybe with weights
             if "weighted_mse_loss" in loss_fn.__repr__():
-                wt = get_exponential_weights(horizon=model.target_horizon).to(device)
+                wt = get_exponential_weights(horizon=model.target_horizon, clip=min((epoch+1)/epochs_loss_cliff,1)).to(device)
+                wt = torch.stack([wt]*y.squeeze().shape[-1],dim=1)
                 loss = loss_fn(yhat.squeeze(), y.squeeze(), wt)
             else:
                 loss = loss_fn(yhat.squeeze(), y.squeeze())
@@ -120,7 +122,7 @@ def train(
 
             if val_dl is not None:
                 val_loss = validate(
-                    model, log_every_n_steps, val_dl, loss_fn, epoch, writer
+                    model, log_every_n_steps, val_dl, loss_fn, epoch, epochs_loss_cliff, writer
                 )
                 all_val_losses.append(val_loss)
 
@@ -141,6 +143,7 @@ def validate(
     validation_dl: DataLoader,
     loss_fn: nn.Module,
     epoch: int,
+    epochs_loss_cliff: int,
     writer: SummaryWriter,
 ) -> float:
     # move onto GPU (if exists)
@@ -170,7 +173,8 @@ def validate(
 
         # calculate loss
         if "weighted_mse_loss" in loss_fn.__repr__():
-            wt = get_exponential_weights(horizon=model.target_horizon).to(device)
+            wt = get_exponential_weights(horizon=model.target_horizon, clip=min((epoch+1)/epochs_loss_cliff,1)).to(device)
+            wt = torch.stack([wt]*y.squeeze().shape[-1],dim=1)
             loss = loss_fn(yhat.squeeze(), y.squeeze(), wt)
         else:
             loss = loss_fn(yhat.squeeze(), y.squeeze())

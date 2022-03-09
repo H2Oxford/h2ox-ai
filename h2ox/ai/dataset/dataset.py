@@ -513,12 +513,9 @@ def train_validation_test_split(
     Returns:
         Tuple[FcastDataset, ...]: train, validation, test datasets
     """
-    train_start_date = cfg["train_start_date"]
-    train_end_date = cfg["train_end_date"]
-    val_start_date = cfg["val_start_date"]
-    val_end_date = cfg["val_end_date"]
-    test_start_date = cfg["test_start_date"]
-    test_end_date = cfg["test_end_date"]
+    train_date_ranges = cfg["train_date_ranges"]
+    val_date_ranges = cfg["val_date_ranges"]
+    test_date_ranges = cfg["test_date_ranges"]
 
     index_df = train_dataset._get_meta_dataframe()
     index_df = index_df.sort_values(time_dim)
@@ -526,10 +523,14 @@ def train_validation_test_split(
     index_df = (
         index_df.reset_index().rename(columns={"index": "pt_index"}).set_index(time_dim)
     )
+    
+    train_idx = np.sum(np.stack([(index_df.index>=chunk[0])&(index_df.index<=chunk[1]) for chunk in train_date_ranges]), axis=0)>0
+    val_idx = np.sum(np.stack([(index_df.index>=chunk[0])&(index_df.index<=chunk[1]) for chunk in val_date_ranges]), axis=0)>0
+    test_idx = np.sum(np.stack([(index_df.index>=chunk[0])&(index_df.index<=chunk[1]) for chunk in test_date_ranges]), axis=0)>0
 
-    train_indexes = index_df.loc[train_start_date:train_end_date]["pt_index"]
-    val_indexes = index_df.loc[val_start_date:val_end_date]["pt_index"]
-    test_indexes = index_df.loc[test_start_date:test_end_date]["pt_index"]
+    train_indexes = index_df.loc[train_idx]["pt_index"]
+    val_indexes = index_df.loc[val_idx]["pt_index"]
+    test_indexes = index_df.loc[test_idx]["pt_index"]
 
     assert not any(
         np.isin(train_indexes, test_indexes)

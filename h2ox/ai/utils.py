@@ -144,9 +144,10 @@ def _save_weights_and_optimizer(
     return weight_path, optimizer_path
 
 
-def get_exponential_weights(horizon: int) -> torch.Tensor:
+def get_exponential_weights(horizon: int, clip:float) -> torch.Tensor:
     # exponential weighting
     wt = np.exp(np.linspace(0, 5, horizon))[::-1]
+    wt[int(horizon*clip):] = 0
     wt = wt / np.linalg.norm(wt)
     wt = torch.from_numpy(wt)
     return wt
