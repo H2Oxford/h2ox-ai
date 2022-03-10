@@ -22,12 +22,14 @@ class FcastDataset(Dataset):
         forecast_horizon: int,
         future_horizon: int,
         target_var: str,
+        target_difference: bool,
         historic_variables: List[str],  # noqa
         forecast_variables: List[str],  # noqa
         future_variables: List[str],
         max_consecutive_nan: int,
         ohe_or_multi: str,
         normalise: Optional[List[str]],
+        zscore: Optional[List[str]],
         time_dim: str = "date",
         horizon_dim: str = "steps",
         **kwargs,
@@ -36,6 +38,7 @@ class FcastDataset(Dataset):
 
         # variables
         self.target_var = target_var
+        self.target_difference = target_difference
         self.historic_variables = historic_variables
         self.forecast_variables = forecast_variables
         self.future_variables = future_variables
@@ -46,6 +49,7 @@ class FcastDataset(Dataset):
 
         # soft data and filtering rules
         self.normalise = normalise
+        self.zscore = zscore
         self.max_consecutive_nan = max_consecutive_nan
 
         # self.include = include_doy
@@ -255,14 +259,33 @@ class FcastDataset(Dataset):
 
         # TODO: but are you sure you want to do this here? you want to normalise the data
         # before so you can use the TRAIN mean/std for the TEST data
-        def normalise_func(arr):
-            return (arr - arr.mean()) / arr.std()
+        def zscore_func(arr):
+            return (arr - arr.mean()) / arr.std()  # -ve to +ve std
+
+        def norm_func(arr):
+            return (arr - arr.min()) / (arr.max() - arr.min())  # 0 to 1
 
         # maybe normalise
-        logger.info("soft data transforms - maybe normalise")
+        logger.info("soft data transforms - maybe normalise or zscore")
+        # store key metrics for recovery later
+        self.augment_dict = {"normalise": {}, "zscore": {}}
         if self.normalise is not None:
             for var in self.normalise:
-                data[var] = data[var].groupby("global_sites").map(normalise_func)
+                self.augment_dict["normalise"][var] = {
+                    "max": data[var].groupby("global_sites").map(lambda arr: arr.max()),
+                    "min": data[var].groupby("global_sites").map(lambda arr: arr.min()),
+                }
+                data[var] = data[var].groupby("global_sites").map(norm_func)
+
+        if self.zscore is not None:
+            for var in self.zscore:
+                self.augment_dict["zscore"][var] = {
+                    "mean": data[var]
+                    .groupby("global_sites")
+                    .map(lambda arr: arr.mean()),
+                    "std": data[var].groupby("global_sites").map(lambda arr: arr.std()),
+                }
+                data[var] = data[var].groupby("global_sites").map(zscore_func)
 
         # mask nans by valid datetime
         logger.info("soft data transforms - validate datetimes")
@@ -270,6 +293,17 @@ class FcastDataset(Dataset):
 
         logger.info("soft data transforms - interpolate_1d")
         data = self._interpolate_1d(data)
+
+        if self.target_difference:
+            logger.info("soft data transforms - get target difference")
+            new_target_vars = []
+            for var in self.target_var:
+                data[f"shift_{var}"] = data[var] - data[var].shift({"date": 1})
+                new_target_vars.append(f"shift_{var}")
+            self.target_var = new_target_vars
+            data = data.isel({"date": slice(1, None)})
+
+        self.xr_ds = data.rename({"global_sites": "site", "steps": "step"})
 
         if self.ohe_or_multi == "multi":
             logger.info("soft data transforms - reshape data multi-target")
@@ -523,10 +557,43 @@ def train_validation_test_split(
     index_df = (
         index_df.reset_index().rename(columns={"index": "pt_index"}).set_index(time_dim)
     )
-    
-    train_idx = np.sum(np.stack([(index_df.index>=chunk[0])&(index_df.index<=chunk[1]) for chunk in train_date_ranges]), axis=0)>0
-    val_idx = np.sum(np.stack([(index_df.index>=chunk[0])&(index_df.index<=chunk[1]) for chunk in val_date_ranges]), axis=0)>0
-    test_idx = np.sum(np.stack([(index_df.index>=chunk[0])&(index_df.index<=chunk[1]) for chunk in test_date_ranges]), axis=0)>0
+
+    train_idx = (
+        np.sum(
+            np.stack(
+                [
+                    (index_df.index >= chunk[0]) & (index_df.index <= chunk[1])
+                    for chunk in train_date_ranges
+                ]
+            ),
+            axis=0,
+        )
+        > 0
+    )
+    val_idx = (
+        np.sum(
+            np.stack(
+                [
+                    (index_df.index >= chunk[0]) & (index_df.index <= chunk[1])
+                    for chunk in val_date_ranges
+                ]
+            ),
+            axis=0,
+        )
+        > 0
+    )
+    test_idx = (
+        np.sum(
+            np.stack(
+                [
+                    (index_df.index >= chunk[0]) & (index_df.index <= chunk[1])
+                    for chunk in test_date_ranges
+                ]
+            ),
+            axis=0,
+        )
+        > 0
+    )
 
     train_indexes = index_df.loc[train_idx]["pt_index"]
     val_indexes = index_df.loc[val_idx]["pt_index"]
