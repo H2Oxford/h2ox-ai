@@ -5,7 +5,8 @@ path_to_runs_folder:
 # dataset parameters - paramters to the PyTorch dataset, not requiring data cache refresh
 dataset_parameters:
     pytorch_dataset: h2ox.ai.dataset.dataset.FcastDataset
-    normalise: ["historic_t2m","historic_tp","forecast_tp", "forecast_t2m","targets_WATER_VOLUME"]
+    normalise: ["targets_WATER_VOLUME"]
+    zscore: ["historic_t2m","historic_tp","forecast_tp", "forecast_t2m"]
     historical_seq_len: 60
     forecast_horizon: 14
     future_horizon: 76
@@ -20,19 +21,17 @@ dataset_parameters:
       - "lower_bhawani"
       - "krishnaraja_sagar"
     target_var: ["targets_WATER_VOLUME"]
+    target_difference: true
     historic_variables: ["historic_t2m","historic_tp","targets_WATER_VOLUME","doy_cos","doy_sin"]
     forecast_variables: ["forecast_tp", "forecast_t2m","doy_cos","doy_sin"]
     future_variables: ["doy_cos","doy_sin"]
-    train_start_date: "2010-01-01"
-    train_end_date: "2017-12-31"
-    val_start_date: "2018-01-01"
-    val_end_date: "2019-12-31"
-    test_start_date: "2020-01-01"
-    test_end_date: "2022-01-01"
+    train_date_ranges: [["2010-01-01","2010-12-31"],["2012-01-01","2012-12-31"],["2014-01-01","2017-12-31"],["2019-01-01","2019-12-31"],["2021-01-01","2021-12-31"]] # 2010,2012,2014-2017,2019,2021-2022
+    val_date_ranges: [["2013-01-01","2013-12-31"],["2018-01-01","2018-12-31"]] # 2013, 2018
+    test_date_ranges: [["2011-01-01","2011-12-31"],["2020-01-01","2020-12-31"]] #2011, 2020
 
 # data parameters - build/load a cached dataset
 data_parameters:
-    cache_path: /home/jupyter/h2ox-ai/data/test_data.nc
+    cache_path: /home/lucas/h2ox-ai/data/test_data_seq.nc
     sites:
       - "kabini"
       - "harangi"
@@ -43,6 +42,30 @@ data_parameters:
     start_data_date: "2010-01-01"
     end_data_date: "2022-01-01"
     data_units:
+      seq:
+        class: h2ox.ai.dataset.data_units.SynthSeq
+        site_keys:
+          - kabini
+          - harangi
+          - bhadra
+          - hemavathy
+          - lower_bhawani
+          - krishnaraja_sagar
+        start_step: 0
+        end_step: 91
+        step_size: 1
+      ones:
+        class: h2ox.ai.dataset.data_units.SynthOnes
+        site_keys:
+          - kabini
+          - harangi
+          - bhadra
+          - hemavathy
+          - lower_bhawani
+          - krishnaraja_sagar
+        start_step: 0
+        end_step: 91
+        step_size: 1
       doy:
         class: h2ox.ai.dataset.data_units.SynthTrigDoY
         site_keys:
@@ -59,7 +82,7 @@ data_parameters:
       forecast:
         class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
         variable_keys: [t2m,tp]
-        gdf_path: /home/jupyter/h2ox-ai/data/basins.geojson
+        gdf_path: /home/lucas/h2ox-ai/data/basins.geojson
         site_col: DAM_NAME
         site_keys:
           - kabini
@@ -80,7 +103,7 @@ data_parameters:
       historic:
         class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
         variable_keys: [t2m,tp]
-        gdf_path: /home/jupyter/h2ox-ai/data/basins.geojson
+        gdf_path: /home/lucas/h2ox-ai/data/basins.geojson
         site_col: DAM_NAME
         site_keys:
           - kabini
@@ -113,18 +136,19 @@ data_parameters:
           - krishnaraja_sagar
 model_parameters:
     # Model Parameters
-    hidden_size: 64
-    num_layers: 1
+    hidden_size: 36
+    num_layers: 3
     dropout: 0.4
 
 training_parameters:
     # Training Parameters
-    num_workers: 4
+    num_workers: 12
     random_val_split: false
     log_every_n_steps: 10
     checkpoint_every_n: 1
     eval_test: false
     batch_size: 100
-    n_epochs: 2
+    n_epochs: 50
+    epochs_loss_cliff: 25
     validate_every_n: 1
     cleanup: false
