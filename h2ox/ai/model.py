@@ -127,9 +127,14 @@ class S2S2SModel(nn.Module):
         self.target_size = target_size
         # self.target_horizon = forecast_horizon + future_horizon + 1 if self.include_current_timestep_in_horizon else forecast_horizon + future_horizon
 
-        self.dropout = nn.Dropout(p=dropout)
-        fc_layer = nn.Linear(hidden_size, target_size)
-        self.head = nn.Sequential(*[fc_layer])
+        dropout = nn.Dropout(p=dropout)
+        # fc_layer = nn.Linear(hidden_size, target_size)
+        assert (
+            hidden_size % target_size == 0
+        ), "hidden size must be multiple of target size"
+        stride = kernel = hidden_size // target_size
+        conv1d = torch.nn.Conv1d(1, 1, kernel, stride=stride)
+        self.head = nn.Sequential(dropout, conv1d)
 
     def forward(self, data):
         batch_size = data["x_d"].shape[0]
@@ -156,12 +161,12 @@ class S2S2SModel(nn.Module):
 
             output, hidden, cell = self.decoder_forecast(x_f, hidden, cell)
             # print ('output_shape',output.shape)
-            pred = self.head(self.dropout(torch.squeeze(output)))
+            pred = self.head(output)
             # print ('pred shape',pred.shape)
 
             # pass through the linear head (SAME AS FUTURE HEAD (?))
 
-            outputs[:, t, :] = pred
+            outputs[:, t, :] = pred.squeeze()
 
         # RUN FUTURE [14 -- 90]
         for t in range(self.forecast_horizon, self.target_horizon):
@@ -170,9 +175,9 @@ class S2S2SModel(nn.Module):
             output, hidden, cell = self.decoder_future(x_ff, hidden, cell)
 
             # pass through the linear head (SAME AS FORECAST HEAD (?))
-            pred = self.head(self.dropout(torch.squeeze(output)))
+            pred = self.head(output)
 
-            outputs[:, t, :] = pred
+            outputs[:, t, :] = pred.squeeze()
 
         return outputs
 
