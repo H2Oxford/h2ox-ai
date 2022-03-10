@@ -176,6 +176,20 @@ def create_doy(values: List[int]) -> Tuple[List[float], ...]:
     return encode_doys(values, start_doy=1, end_doy=366)
 
 
+def revert_to_levels(
+    data: xr.Dataset,
+    preds: xr.Dataset,
+    target_var: str,
+) -> xr.Dataset:
+
+    for var in ["obs", "sim"]:
+        preds[var] = preds[var].cumsum(dim="step") + data[target_var].sel(
+            {"date": data["date"].isin(preds["date"])}
+        ).isel({"step": 0})
+
+    return preds
+
+
 def calculate_errors(
     preds: xr.Dataset,
     var: str,
@@ -184,7 +198,7 @@ def calculate_errors(
     model_str: str = "s2s",
 ) -> xr.Dataset:
     def np_mape(Y_actual, Y_predicted):
-        return np.mean(np.abs((Y_actual - Y_predicted) / Y_actual))
+        return np.mean(np.abs(Y_actual - Y_predicted))  # / Y_actual
 
     def np_pearson(x, y):
         return np.sum((x - np.mean(x)) * (y - np.mean(y))) / np.sqrt(
