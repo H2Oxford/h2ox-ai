@@ -18,10 +18,15 @@ from torch.utils.tensorboard import SummaryWriter
 
 from h2ox.ai.dataset import DatasetFactory
 from h2ox.ai.dataset.dataset import train_validation_test_split
-from h2ox.ai.dataset.utils import calculate_errors
+from h2ox.ai.dataset.utils import calculate_errors, revert_to_levels
 from h2ox.ai.experiment import ex
 from h2ox.ai.model import initialise_model
-from h2ox.ai.plots import plot_horizon_losses, plot_losses, plot_timeseries_over_horizon, plot_test_preds
+from h2ox.ai.plots import (
+    plot_horizon_losses,
+    plot_losses,
+    plot_test_preds,
+    plot_timeseries_over_horizon,
+)
 from h2ox.ai.train import initialise_training, test, train
 
 
@@ -103,7 +108,7 @@ def main(
         log_every_n_steps=training_parameters["log_every_n_steps"],
         checkpoint_every_n=training_parameters["checkpoint_every_n"],
         epochs=training_parameters["n_epochs"],
-        epochs_loss_cliff = training_parameters["epochs_loss_cliff"],
+        epochs_loss_cliff=training_parameters["epochs_loss_cliff"],
         val_dl=val_dl,
         validate_every_n=training_parameters["validate_every_n"],
         experiment=ex,
@@ -132,7 +137,28 @@ def main(
     plot_horizon_losses(filepath, error=errors["rmse"], identifier="rmse")
     plot_horizon_losses(filepath, error=errors["pearson-r"], identifier="pearson-r")
     plot_timeseries_over_horizon(filepath=filepath, preds=preds)
-    plot_test_preds(filepath=filepath, preds=preds, test_chunks=dataset_parameters['test_date_ranges'], site_dim = "site")
+
+    if dataset_parameters["target_difference"]:
+        preds_levels = revert_to_levels(
+            data=dd.xr_ds,
+            preds=preds,
+            target_var=dataset_parameters["target_var"][
+                0
+            ],  # TODO: if there is more than one target var...
+        )
+        plot_test_preds(
+            filepath=filepath,
+            preds=preds_levels,
+            test_chunks=dataset_parameters["test_date_ranges"],
+            site_dim="site",
+        )
+    else:
+        plot_test_preds(
+            filepath=filepath,
+            preds=preds,
+            test_chunks=dataset_parameters["test_date_ranges"],
+            site_dim="site",
+        )
 
     logger.info(f"Writing prediction and error datasets to .nc at {filepath}")
     errors.to_netcdf(filepath / "errors.nc")
