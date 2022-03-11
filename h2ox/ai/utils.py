@@ -15,61 +15,78 @@ def _process_metadata(
 ) -> Tuple[List[str], List[np.ndarray], List[np.ndarray]]:
     # Convert metadata (init_time, target_time, location) into lists
     idxs = data["meta"]["index"].detach().cpu().numpy().flatten()
-    samples = [meta_lookup[idx][0] for idx in idxs]
-    forecast_init_times = [meta_lookup[idx][1] for idx in idxs]
+
+    [meta_lookup[idx] for idx in idxs]
+
+    forecast_init_times = [meta_lookup[idx]["date"] for idx in idxs]
     # NOTE: these times need cleaning (conversion errors @ minute resolution)...
     target_times = np.array(
         data["meta"]["target_times"].detach().cpu().numpy().astype("datetime64[ns]"),
         dtype="datetime64[m]",
     )
 
-    return samples, forecast_init_times, target_times
+    eval_metadata = {"init_time": forecast_init_times, "time": target_times}
+
+    if "site" in data["meta"].keys():
+        eval_metadata["site"] = [meta_lookup[idx]["site"] for idx in idxs]
+
+    return eval_metadata
 
 
 def _eval_data_to_ds(
     eval_data: DefaultDict[str, List[np.ndarray]],
+    site_keys: Optional[List[str]] = None,
     assign_sample: bool = False,
     time_dim: str = "date",
     horizon_dim: str = "step",
-    sample_dim: str = "sample",
+    site_dim: str = "site",
 ) -> xr.Dataset:
     # get correct shapes for arrays as output
     obs = np.concatenate(eval_data["obs"], axis=0)
     sim = np.concatenate(eval_data["sim"], axis=0)
-    sample = np.concatenate(eval_data["sample"], axis=0)
     time = np.concatenate(eval_data["time"], axis=0)
     init_time = np.concatenate(eval_data["init_time"], axis=0)
 
+    if site_dim in eval_data.keys():
+        # is one-hot-encoded, deshape:
+        sites = np.concatenate(eval_data[site_dim], axis=0)
+
+        obs = np.stack([obs[sites == site, :] for site in np.unique(sites)], axis=-1)
+        sim = np.stack([sim[sites == site, :] for site in np.unique(sites)], axis=-1)
+        time = np.stack([time[sites == site, :] for site in np.unique(sites)], axis=-1)
+        init_time = np.stack(
+            [init_time[sites == site] for site in np.unique(sites)], axis=-1
+        )
+
+        # assert (np.diff(init_time,axis=1)==timedelta(days=0)).all(), ""
+        time = time[:, :, 0]
+        init_time = init_time[:, 0]
+
+    # recover a 4d array: time x site x horizon x variable
+    if site_keys is None:
+        site_keys = np.arange(obs.shape[-1])
+
     coords = {
         time_dim: init_time,
-        horizon_dim: np.arange(1, sim.shape[-1] + 1 if sim.ndim > 1 else 1),
+        horizon_dim: np.arange(sim.shape[1]),
+        "site": site_keys,
     }
     ds = xr.Dataset(
         {
             "obs": (
-                (time_dim, horizon_dim),
-                obs if obs.ndim > 1 else obs[:, np.newaxis],
+                (time_dim, horizon_dim, "site"),
+                obs,
             ),
             "sim": (
-                (time_dim, horizon_dim),
-                sim if sim.ndim > 1 else sim[:, np.newaxis],
+                (time_dim, horizon_dim, "site"),
+                sim,
             ),
             "valid_time": ((time_dim, horizon_dim), time),
-            sample_dim: ((time_dim), sample),
         },
         coords=coords,
     )
 
-    # assign `sample_dim` as a dimension to the dataset
-    if assign_sample:
-        df = ds.to_dataframe().reset_index()
-        ds_with_sample_dim = df.set_index(
-            [time_dim, horizon_dim, sample_dim]
-        ).to_xarray()
-
-        return ds_with_sample_dim
-    else:
-        return ds
+    return ds
 
 
 def load_model_optimizer_from_checkpoint(
@@ -127,9 +144,10 @@ def _save_weights_and_optimizer(
     return weight_path, optimizer_path
 
 
-def get_exponential_weights(horizon: int) -> torch.Tensor:
+def get_exponential_weights(horizon: int, clip:float) -> torch.Tensor:
     # exponential weighting
     wt = np.exp(np.linspace(0, 5, horizon))[::-1]
+    wt[int(horizon*clip):] = 0
     wt = wt / np.linalg.norm(wt)
     wt = torch.from_numpy(wt)
     return wt

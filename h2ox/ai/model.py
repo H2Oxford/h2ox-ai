@@ -94,6 +94,7 @@ class S2S2SModel(nn.Module):
         forecast_input_size: int,
         future_input_size: int,
         hidden_size: int,
+        target_size: int,
         num_layers: int = 1,
         dropout: float = 0.4,
         device: str = "cpu",
@@ -123,11 +124,17 @@ class S2S2SModel(nn.Module):
         self.future_horizon = future_horizon
         # TODO: calculate this from the data too!
         self.target_horizon = forecast_horizon + future_horizon
+        self.target_size = target_size
         # self.target_horizon = forecast_horizon + future_horizon + 1 if self.include_current_timestep_in_horizon else forecast_horizon + future_horizon
 
-        self.dropout = nn.Dropout(p=dropout)
-        fc_layer = nn.Linear(hidden_size, 1)
-        self.head = nn.Sequential(*[fc_layer])
+        dropout = nn.Dropout(p=dropout)
+        # fc_layer = nn.Linear(hidden_size, target_size)
+        assert (
+            hidden_size % target_size == 0
+        ), "hidden size must be multiple of target size"
+        stride = kernel = hidden_size // target_size
+        conv1d = torch.nn.Conv1d(1, 1, kernel, stride=stride)
+        self.head = nn.Sequential(dropout, conv1d)
 
     def forward(self, data):
         batch_size = data["x_d"].shape[0]
@@ -139,7 +146,7 @@ class S2S2SModel(nn.Module):
         #  the zero-time forecast just using the output of the encoder.
         # horizon size = forecast_horizon + future_horizon
         horizon = self.target_horizon
-        outputs = torch.zeros(batch_size, horizon if horizon > 0 else 1).to(self.device)
+        outputs = torch.zeros(batch_size, horizon, self.target_size).to(self.device)
 
         # RUN PREDICTION OF NOW (initialisation_time)
         # pass through the linear head (SAME AS FUTURE HEAD (?))
@@ -153,13 +160,13 @@ class S2S2SModel(nn.Module):
             x_f = data["x_f"][:, t, :].unsqueeze(1)
 
             output, hidden, cell = self.decoder_forecast(x_f, hidden, cell)
+            # print ('output_shape',output.shape)
+            pred = self.head(output)
+            # print ('pred shape',pred.shape)
 
             # pass through the linear head (SAME AS FUTURE HEAD (?))
-            # t_adj = t + 1 if self.include_current_timestep_in_horizon else t
-            t_adj = t
-            outputs[:, t_adj] = torch.squeeze(
-                self.head(self.dropout(torch.squeeze(output)))
-            )
+
+            outputs[:, t, :] = pred.squeeze()
 
         # RUN FUTURE [14 -- 90]
         for t in range(self.forecast_horizon, self.target_horizon):
@@ -168,11 +175,9 @@ class S2S2SModel(nn.Module):
             output, hidden, cell = self.decoder_future(x_ff, hidden, cell)
 
             # pass through the linear head (SAME AS FORECAST HEAD (?))
-            # t_adj = t + 1 if self.include_current_timestep_in_horizon else t
-            t_adj = t
-            outputs[:, t_adj] = torch.squeeze(
-                self.head(self.dropout(torch.squeeze(output)))
-            )
+            pred = self.head(output)
+
+            outputs[:, t, :] = pred.squeeze()
 
         return outputs
 
@@ -187,6 +192,7 @@ def initialise_model(
     historical_input_size = item["x_d"].shape[1]
     forecast_input_size = item["x_f"].shape[1]
     future_input_size = item["x_ff"].shape[1]
+    target_size = item["y"].shape[1]
 
     model = S2S2SModel(
         forecast_horizon=forecast_horizon,
@@ -196,6 +202,7 @@ def initialise_model(
         future_input_size=future_input_size,
         hidden_size=hidden_size,
         num_layers=num_layers,
+        target_size=target_size,
         dropout=dropout,
     )
 

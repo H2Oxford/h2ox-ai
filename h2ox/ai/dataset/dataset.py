@@ -22,12 +22,14 @@ class FcastDataset(Dataset):
         forecast_horizon: int,
         future_horizon: int,
         target_var: str,
+        target_difference: bool,
         historic_variables: List[str],  # noqa
         forecast_variables: List[str],  # noqa
         future_variables: List[str],
         max_consecutive_nan: int,
         ohe_or_multi: str,
         normalise: Optional[List[str]],
+        zscore: Optional[List[str]],
         time_dim: str = "date",
         horizon_dim: str = "steps",
         **kwargs,
@@ -36,6 +38,7 @@ class FcastDataset(Dataset):
 
         # variables
         self.target_var = target_var
+        self.target_difference = target_difference
         self.historic_variables = historic_variables
         self.forecast_variables = forecast_variables
         self.future_variables = future_variables
@@ -46,6 +49,7 @@ class FcastDataset(Dataset):
 
         # soft data and filtering rules
         self.normalise = normalise
+        self.zscore = zscore
         self.max_consecutive_nan = max_consecutive_nan
 
         # self.include = include_doy
@@ -145,7 +149,44 @@ class FcastDataset(Dataset):
             {"date-site": ("date", "global_sites")}
         )
 
-    def _reshape_data_ohe(self, data):
+    def _reshape_data_multi(self, data, valid_dates):
+
+        historic = (
+            self._get_historic_data(data)
+            .drop("steps")
+            .stack({"sites-variable": ("global_sites", "variable")})
+            .transpose("date", "historic_roll", "sites-variable")
+        )
+
+        forecast = (
+            self._get_forecast_data(data)
+            .stack({"sites-variable": ("global_sites", "variable")})
+            .transpose("date", "steps", "sites-variable")
+        )
+
+        future = (
+            self._get_future_data(data)
+            .stack({"sites-variable": ("global_sites", "variable")})
+            .transpose("date", "steps", "sites-variable")
+        )
+
+        targets = (
+            self._get_target_data(data)
+            .drop("steps")
+            .stack({"sites-variable": ("global_sites", "variable")})
+            .transpose("date", "target_roll", "sites-variable")
+        )
+
+        idxs = historic["date"].data[np.isin(historic["date"].data, valid_dates)]
+
+        self.historic = historic.sel({"date": idxs}).data
+        self.forecast = forecast.sel({"date": idxs}).data
+        self.future = future.sel({"date": idxs}).data
+        self.targets = targets.sel({"date": idxs}).data
+
+        return idxs
+
+    def _reshape_data_ohe(self, data, valid_dates):
 
         historic = self._onehotencode(
             self._get_historic_data(data).drop("steps"), "historic_roll"
@@ -159,11 +200,39 @@ class FcastDataset(Dataset):
             self._get_future_data(data), "steps"
         )  # DATES*sites x STEPS x var+ohe
 
-        target = self._onehotencode(
+        targets = self._onehotencode(
             self._get_target_data(data).drop("steps"), "target_roll"
         )  # DATES*sites x STEPS x var+ohe
 
-        return historic, forecast, future, target
+        idxs = historic["date-site"].data[np.isin(historic["date"].data, valid_dates)]
+
+        self.historic = (
+            historic.sel({"date-site": idxs})
+            .to_array()
+            .transpose("date-site", "historic_roll", "variable")
+            .data
+        )
+        self.forecast = (
+            forecast.sel({"date-site": idxs})
+            .to_array()
+            .transpose("date-site", "steps", "variable")
+            .data
+        )
+        self.future = (
+            future.sel({"date-site": idxs})
+            .to_array()
+            .transpose("date-site", "steps", "variable")
+            .data
+        )
+        self.targets = (
+            targets.sel({"date-site": idxs})
+            .to_array()
+            .transpose("date-site", "target_roll", "variable")
+            .sel({"variable": self.target_var})
+            .data
+        )
+
+        return idxs
 
     def _interpolate_1d(self, data):
         for var in list(data.keys()):
@@ -186,16 +255,37 @@ class FcastDataset(Dataset):
         self.all_data: DefaultDict[int, Dict] = defaultdict(dict)
         self.sample_lookup: Dict[int, Tuple[str, pd.Timestamp]] = {}
 
+        self.site_keys = data["global_sites"].values
+
         # TODO: but are you sure you want to do this here? you want to normalise the data
         # before so you can use the TRAIN mean/std for the TEST data
-        def normalise_func(arr):
-            return (arr - arr.mean()) / arr.std()
+        def zscore_func(arr):
+            return (arr - arr.mean()) / arr.std()  # -ve to +ve std
+
+        def norm_func(arr):
+            return (arr - arr.min()) / (arr.max() - arr.min())  # 0 to 1
 
         # maybe normalise
-        logger.info("soft data transforms - maybe normalise")
+        logger.info("soft data transforms - maybe normalise or zscore")
+        # store key metrics for recovery later
+        self.augment_dict = {"normalise": {}, "zscore": {}}
         if self.normalise is not None:
             for var in self.normalise:
-                data[var] = data[var].groupby("global_sites").map(normalise_func)
+                self.augment_dict["normalise"][var] = {
+                    "max": data[var].groupby("global_sites").map(lambda arr: arr.max()),
+                    "min": data[var].groupby("global_sites").map(lambda arr: arr.min()),
+                }
+                data[var] = data[var].groupby("global_sites").map(norm_func)
+
+        if self.zscore is not None:
+            for var in self.zscore:
+                self.augment_dict["zscore"][var] = {
+                    "mean": data[var]
+                    .groupby("global_sites")
+                    .map(lambda arr: arr.mean()),
+                    "std": data[var].groupby("global_sites").map(lambda arr: arr.std()),
+                }
+                data[var] = data[var].groupby("global_sites").map(zscore_func)
 
         # mask nans by valid datetime
         logger.info("soft data transforms - validate datetimes")
@@ -204,39 +294,25 @@ class FcastDataset(Dataset):
         logger.info("soft data transforms - interpolate_1d")
         data = self._interpolate_1d(data)
 
+        if self.target_difference:
+            logger.info("soft data transforms - get target difference")
+            new_target_vars = []
+            for var in self.target_var:
+                data[f"shift_{var}"] = data[var] - data[var].shift({"date": 1})
+                new_target_vars.append(f"shift_{var}")
+            self.target_var = new_target_vars
+            data = data.isel({"date": slice(1, None)})
+
+        self.xr_ds = data.rename({"global_sites": "site", "steps": "step"})
+
         if self.ohe_or_multi == "multi":
-            raise NotImplementedError
+            logger.info("soft data transforms - reshape data multi-target")
+            idxs = self._reshape_data_multi(data, valid_dates)
+            self.metadata_columns = ["date"]
         elif self.ohe_or_multi == "ohe":
             logger.info("soft data transforms - reshape with one-hot-encoding")
-            historic, forecast, future, targets = self._reshape_data_ohe(data)
-
-        idx = historic["date-site"].data[np.isin(historic["date"].data, valid_dates)]
-
-        self.historic = (
-            historic.sel({"date-site": idx})
-            .to_array()
-            .transpose("date-site", "historic_roll", "variable")
-            .data
-        )
-        self.forecast = (
-            forecast.sel({"date-site": idx})
-            .to_array()
-            .transpose("date-site", "steps", "variable")
-            .data
-        )
-        self.future = (
-            future.sel({"date-site": idx})
-            .to_array()
-            .transpose("date-site", "steps", "variable")
-            .data
-        )
-        self.targets = (
-            targets.sel({"date-site": idx})
-            .to_array()
-            .transpose("date-site", "target_roll", "variable")
-            .sel({"variable": self.target_var})
-            .data
-        )
+            idxs = self._reshape_data_ohe(data, valid_dates)
+            self.metadata_columns = ["date", "site"]
 
         logger.info(
             f"soft data transforms - data shape - historic:{self.historic.shape}; forecast:{self.forecast.shape}; future:{self.future.shape}; targets:{self.targets.shape}"
@@ -244,7 +320,7 @@ class FcastDataset(Dataset):
 
         # SAVE ALL DATA to attribute
         logger.info("soft data transforms - build data Dictionary")
-        for ii, (date, site) in enumerate(idx):
+        for ii, idx in enumerate(idxs):
 
             self.all_data[ii] = {
                 "x_d": self.historic[ii, ...].astype(np.float32),
@@ -253,9 +329,12 @@ class FcastDataset(Dataset):
                 "y": self.targets[ii, ...].astype(np.float32),
             }
 
-            self.sample_lookup[ii] = (site, date)
+            if isinstance(idx, tuple):
+                self.sample_lookup[ii] = dict(zip(self.metadata_columns, idx))
+            else:
+                self.sample_lookup[ii] = dict(zip(self.metadata_columns, (idx,)))
 
-        self.n_samples = len(idx)
+        self.n_samples = len(idxs)
 
     def _get_historic_data(
         self,
@@ -384,19 +463,18 @@ class FcastDataset(Dataset):
 
         return history, fcast, future
 
-    def get_meta(self, idx: int) -> Tuple[str, pd.Timestamp]:
-        return self.sample_lookup[idx]
-
     def _get_meta_dataframe(self) -> pd.DataFrame:
         return pd.DataFrame(
-            self.sample_lookup.values(), index=self.sample_lookup.keys()
-        ).rename({0: "location", 1: self.time_dim}, axis=1)
+            self.sample_lookup.values(),
+            index=self.sample_lookup.keys(),
+            columns=self.metadata_columns,
+        )
 
     def __getitem__(self, idx) -> Dict[str, Union[Tensor, Dict[str, Tensor]]]:
 
         data: Dict[str, pd.DataFrame] = self.all_data[idx]
 
-        site, date = self.sample_lookup[idx]
+        meta = self.sample_lookup[idx]
 
         if data == {}:
             return None
@@ -405,27 +483,29 @@ class FcastDataset(Dataset):
         #  NOTE: has to be in float format to play nicely with pytorch DataLoaders
         input_times = np.array(
             [
-                (date + timedelta(days=ii)).to_numpy()
+                (pd.to_datetime(meta["date"]) + timedelta(days=ii)).to_numpy()
                 for ii in range(-data["x_d"].shape[0], 0)
             ]
         ).astype(float)
         target_times = np.array(
             [
-                (date + timedelta(days=ii)).to_numpy()
+                (pd.to_datetime(meta["date"]) + timedelta(days=ii)).to_numpy()
                 for ii in range(1, data["y"].shape[0] + 1)
             ]
         ).astype(float)
-        # site has to be stored as int
-        site_encoding = {v: k for (k, v) in self.sites_dictionary.items()}[site]
 
-        meta = {  # noqa
+        meta_dict = {  # noqa
             "input_times": input_times,
             "target_times": target_times,
-            "site": np.array([site_encoding]),
             "index": np.array([idx]),
         }
 
-        data["meta"] = meta
+        if "site" in meta.keys():
+            meta_dict["site"] = np.array(
+                [{v: k for (k, v) in self.sites_dictionary.items()}[meta["site"]]]
+            )
+
+        data["meta"] = meta_dict
 
         """
         # CONVERT TO torch.Tensor OBJECTS
@@ -467,12 +547,9 @@ def train_validation_test_split(
     Returns:
         Tuple[FcastDataset, ...]: train, validation, test datasets
     """
-    train_start_date = cfg["train_start_date"]
-    train_end_date = cfg["train_end_date"]
-    val_start_date = cfg["val_start_date"]
-    val_end_date = cfg["val_end_date"]
-    test_start_date = cfg["test_start_date"]
-    test_end_date = cfg["test_end_date"]
+    train_date_ranges = cfg["train_date_ranges"]
+    val_date_ranges = cfg["val_date_ranges"]
+    test_date_ranges = cfg["test_date_ranges"]
 
     index_df = train_dataset._get_meta_dataframe()
     index_df = index_df.sort_values(time_dim)
@@ -481,9 +558,46 @@ def train_validation_test_split(
         index_df.reset_index().rename(columns={"index": "pt_index"}).set_index(time_dim)
     )
 
-    train_indexes = index_df.loc[train_start_date:train_end_date]["pt_index"]
-    val_indexes = index_df.loc[val_start_date:val_end_date]["pt_index"]
-    test_indexes = index_df.loc[test_start_date:test_end_date]["pt_index"]
+    train_idx = (
+        np.sum(
+            np.stack(
+                [
+                    (index_df.index >= chunk[0]) & (index_df.index <= chunk[1])
+                    for chunk in train_date_ranges
+                ]
+            ),
+            axis=0,
+        )
+        > 0
+    )
+    val_idx = (
+        np.sum(
+            np.stack(
+                [
+                    (index_df.index >= chunk[0]) & (index_df.index <= chunk[1])
+                    for chunk in val_date_ranges
+                ]
+            ),
+            axis=0,
+        )
+        > 0
+    )
+    test_idx = (
+        np.sum(
+            np.stack(
+                [
+                    (index_df.index >= chunk[0]) & (index_df.index <= chunk[1])
+                    for chunk in test_date_ranges
+                ]
+            ),
+            axis=0,
+        )
+        > 0
+    )
+
+    train_indexes = index_df.loc[train_idx]["pt_index"]
+    val_indexes = index_df.loc[val_idx]["pt_index"]
+    test_indexes = index_df.loc[test_idx]["pt_index"]
 
     assert not any(
         np.isin(train_indexes, test_indexes)

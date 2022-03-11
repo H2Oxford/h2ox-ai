@@ -37,9 +37,9 @@ def initialise_training(
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
 
     # use MSE Loss function
-    loss_fn = nn.MSELoss().to(device)
+    # loss_fn = nn.MSELoss().to(device)
     # loss_fn = nn.SmoothL1Loss().to(device)
-    # loss_fn = weighted_mse_loss
+    loss_fn = weighted_mse_loss
 
     return optimizer, scheduler, loss_fn
 
@@ -55,6 +55,7 @@ def train(
     writer: Optional[SummaryWriter] = None,
     scheduler: Optional[Any] = None,
     epochs: int = 5,
+    epochs_loss_cliff: int = 5,
     val_dl: Optional[DataLoader] = None,
     validate_every_n: int = 3,
     catch_nans: bool = False,
@@ -86,7 +87,8 @@ def train(
 
             # calculate loss, maybe with weights
             if "weighted_mse_loss" in loss_fn.__repr__():
-                wt = get_exponential_weights(horizon=model.target_horizon).to(device)
+                wt = get_exponential_weights(horizon=model.target_horizon, clip=min((epoch+1)/epochs_loss_cliff,1)).to(device)
+                wt = torch.stack([wt]*y.squeeze().shape[-1],dim=1)
                 loss = loss_fn(yhat.squeeze(), y.squeeze(), wt)
             else:
                 loss = loss_fn(yhat.squeeze(), y.squeeze())
@@ -118,7 +120,7 @@ def train(
 
             if val_dl is not None:
                 val_loss = validate(
-                    model, log_every_n_steps, val_dl, loss_fn, epoch, writer
+                    model, log_every_n_steps, val_dl, loss_fn, epoch, epochs_loss_cliff, writer
                 )
                 all_val_losses.append(val_loss)
 
@@ -139,6 +141,7 @@ def validate(
     validation_dl: DataLoader,
     loss_fn: nn.Module,
     epoch: int,
+    epochs_loss_cliff: int,
     writer: SummaryWriter,
 ) -> float:
     # move onto GPU (if exists)
@@ -147,8 +150,10 @@ def validate(
 
     if isinstance(validation_dl.dataset, Subset):
         meta_lookup = validation_dl.dataset.dataset.sample_lookup
+        site_keys = validation_dl.dataset.dataset.site_keys
     else:
         meta_lookup = validation_dl.dataset.sample_lookup
+        site_keys = validation_dl.dataset.site_keys
 
     model.eval()
     pbar = tqdm(validation_dl, "Validation")
@@ -166,14 +171,13 @@ def validate(
 
         # calculate loss
         if "weighted_mse_loss" in loss_fn.__repr__():
-            wt = get_exponential_weights(horizon=model.target_horizon).to(device)
+            wt = get_exponential_weights(horizon=model.target_horizon, clip=min((epoch+1)/epochs_loss_cliff,1)).to(device)
+            wt = torch.stack([wt]*y.squeeze().shape[-1],dim=1)
             loss = loss_fn(yhat.squeeze(), y.squeeze(), wt)
         else:
             loss = loss_fn(yhat.squeeze(), y.squeeze())
 
-        samples, forecast_init_times, target_times = _process_metadata(
-            data, meta_lookup
-        )
+        eval_meta = _process_metadata(data, meta_lookup)
 
         # save the predictions and the observations
         obs = y.squeeze().detach().cpu().numpy()
@@ -182,19 +186,18 @@ def validate(
         # Create a dictionary of the results
         eval_data["obs"].append(obs)
         eval_data["sim"].append(sim)
-        eval_data["sample"].append(samples)
-        eval_data["time"].append(target_times)
-        eval_data["init_time"].append(forecast_init_times)
+        for kk, vv in eval_meta.items():
+            eval_data[kk].append(vv)
 
         losses.append(loss.detach().cpu().numpy())
 
-    ds = _eval_data_to_ds(eval_data, assign_sample=False)
-    ds = calculate_errors(ds, var="y")
+    ds = _eval_data_to_ds(eval_data, assign_sample=False, site_keys=site_keys)
+    ds = calculate_errors(ds, var="y", site_dim="site")
 
     target_horizon = ds["step"].shape[0]
 
     scalar_dict = (
-        ds.mean(dim="sample")
+        ds.mean(dim="site")
         .sel({"step": range(1, target_horizon, log_every_n_steps)})
         .to_dict()
     )
@@ -228,10 +231,13 @@ def validate(
 def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
+
     if isinstance(test_dl.dataset, Subset):
         meta_lookup = test_dl.dataset.dataset.sample_lookup
+        site_keys = test_dl.dataset.dataset.site_keys
     else:
         meta_lookup = test_dl.dataset.sample_lookup
+        site_keys = test_dl.dataset.site_keys
 
     eval_data = defaultdict(list)
     for data in tqdm(test_dl, "Running Evaluation"):
@@ -239,21 +245,20 @@ def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
         for key in [k for k in data.keys() if k != "meta"]:
             data[key] = data[key].to(device)
 
-        # get the metadata
-        samples, forecast_init_times, target_times = _process_metadata(
-            data, meta_lookup
-        )
+        yhat = model(data).to(device)
+        y = data["y"]
+
+        eval_meta = _process_metadata(data, meta_lookup)
 
         # save the predictions and the observations
-        obs = data["y"].squeeze().detach().cpu().numpy()
-        sim = model(data).squeeze().detach().cpu().numpy()
+        obs = y.squeeze().detach().cpu().numpy()
+        sim = yhat.squeeze().detach().cpu().numpy()
 
         # Create a dictionary of the results
         eval_data["obs"].append(obs)
         eval_data["sim"].append(sim)
-        eval_data["sample"].append(samples)
-        eval_data["time"].append(target_times)
-        eval_data["init_time"].append(forecast_init_times)
+        for kk, vv in eval_meta.items():
+            eval_data[kk].append(vv)
 
-    ds = _eval_data_to_ds(eval_data, assign_sample=False)
+    ds = _eval_data_to_ds(eval_data, assign_sample=False, site_keys=site_keys)
     return ds
