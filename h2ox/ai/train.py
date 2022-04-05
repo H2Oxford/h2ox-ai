@@ -27,19 +27,22 @@ def weighted_mse_loss(
 
 
 def initialise_training(
-    model, device: str, loss_rate: float = 5e-2
+    model, device: str, loss_rate: float = 5e-2, schedule_params: Optional[dict] = None
 ) -> Tuple[Any, Any, Any]:
     # use ADAM optimizer
     optimizer = optim.Adam([pam for pam in model.parameters()], lr=loss_rate)  # 0.05
 
     # reduce loss rate every \step_size epochs by \gamma
     #  from initial \lr
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
+    if schedule_params is not None:
+        scheduler = optim.lr_scheduler.StepLR(optimizer, **schedule_params)
+    else:
+        scheduler = None
 
     # use MSE Loss function
-    # loss_fn = nn.MSELoss().to(device)
+    loss_fn = nn.MSELoss().to(device)
     # loss_fn = nn.SmoothL1Loss().to(device)
-    loss_fn = weighted_mse_loss
+    # loss_fn = weighted_mse_loss
 
     return optimizer, scheduler, loss_fn
 
@@ -54,6 +57,8 @@ def train(
     checkpoint_every_n: int = 5,
     writer: Optional[SummaryWriter] = None,
     scheduler: Optional[Any] = None,
+    denorm: Optional[dict] = None,
+    denorm_var: Optional[str] = None,
     epochs: int = 5,
     epochs_loss_cliff: int = 5,
     val_dl: Optional[DataLoader] = None,
@@ -75,7 +80,7 @@ def train(
 
         epoch_losses = []
         pbar = tqdm(train_dl, f"Epoch {epoch + 1}")
-        for data in pbar:
+        for ii, data in enumerate(pbar):
             # move onto GPU (if exists)
             for key in [k for k in data.keys() if k != "meta"]:
                 data[key] = data[key].to(device)
@@ -88,11 +93,40 @@ def train(
 
             # calculate loss, maybe with weights
             if "weighted_mse_loss" in loss_fn.__repr__():
-                wt = get_exponential_weights(horizon=model.target_horizon, clip=min((epoch+1)/epochs_loss_cliff,1)).to(device)
-                wt = torch.stack([wt]*y.squeeze().shape[-1],dim=1)
+                wt = get_exponential_weights(
+                    horizon=model.target_horizon,
+                    clip=min((epoch + 1) / epochs_loss_cliff, 1),
+                ).to(device)
+                wt = torch.stack([wt] * y.squeeze().shape[-1], dim=1)
                 loss = loss_fn(yhat.squeeze(), y.squeeze(), wt)
             else:
                 loss = loss_fn(yhat.squeeze(), y.squeeze())
+
+            if ii == 0:
+                print(
+                    "loss:", "combined", loss.detach().cpu().numpy()
+                )  # .detach().cpu().numpy())
+                print(
+                    "Y",
+                    "max",
+                    torch.amax(data["y"], dim=(0, 1)).cpu().numpy(),
+                    "min",
+                    torch.amin(data["y"], dim=(0, 1)).cpu().numpy(),
+                    "mean",
+                    torch.mean(data["y"], dim=(0, 1)).cpu().numpy(),
+                )
+                print(
+                    "yhat",
+                    "max",
+                    torch.amax(yhat, dim=(0, 1)).detach().cpu().numpy(),
+                    "min",
+                    torch.amin(yhat, dim=(0, 1)).detach().cpu().numpy(),
+                    "mean",
+                    torch.mean(yhat, dim=(0, 1)).detach().cpu().numpy(),
+                )
+
+                for name, p in model.named_parameters():
+                    print(name, p.requires_grad, p.data.mean())
 
             #  calculate gradients and change weights
             loss.backward()
@@ -122,7 +156,15 @@ def train(
 
             if val_dl is not None:
                 val_loss = validate(
-                    model, log_every_n_steps, val_dl, loss_fn, epoch, epochs_loss_cliff, writer
+                    model,
+                    log_every_n_steps,
+                    val_dl,
+                    loss_fn,
+                    epoch,
+                    epochs_loss_cliff,
+                    denorm,
+                    denorm_var,
+                    writer,
                 )
                 all_val_losses.append(val_loss)
 
@@ -144,6 +186,8 @@ def validate(
     loss_fn: nn.Module,
     epoch: int,
     epochs_loss_cliff: int,
+    denorm: Optional[dict],
+    denorm_var: Optional[str],
     writer: SummaryWriter,
 ) -> float:
     # move onto GPU (if exists)
@@ -173,8 +217,11 @@ def validate(
 
         # calculate loss
         if "weighted_mse_loss" in loss_fn.__repr__():
-            wt = get_exponential_weights(horizon=model.target_horizon, clip=min((epoch+1)/epochs_loss_cliff,1)).to(device)
-            wt = torch.stack([wt]*y.squeeze().shape[-1],dim=1)
+            wt = get_exponential_weights(
+                horizon=model.target_horizon,
+                clip=min((epoch + 1) / epochs_loss_cliff, 1),
+            ).to(device)
+            wt = torch.stack([wt] * y.squeeze().shape[-1], dim=1)
             loss = loss_fn(yhat.squeeze(), y.squeeze(), wt)
         else:
             loss = loss_fn(yhat.squeeze(), y.squeeze())
@@ -193,8 +240,15 @@ def validate(
 
         losses.append(loss.detach().cpu().numpy())
 
-    ds = _eval_data_to_ds(eval_data, assign_sample=False, site_keys=site_keys)
-    ds = calculate_errors(ds, var="y", site_dim="site")
+    ds = _eval_data_to_ds(
+        eval_data,
+        assign_sample=False,
+        data_keys=["obs", "sim"],
+        denorm=denorm,
+        denorm_var=denorm_var,
+        site_keys=site_keys,
+    )
+    ds = calculate_errors(ds, obs_var="obs", sim_var="sim", site_dim="site")
 
     target_horizon = ds["step"].shape[0]
 
@@ -230,7 +284,12 @@ def validate(
     return valid_loss
 
 
-def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
+def test(
+    model: nn.Module,
+    test_dl: DataLoader,
+    denorm: Optional[dict] = None,
+    denorm_var: Optional[str] = None,
+) -> xr.Dataset:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
@@ -262,5 +321,12 @@ def test(model: nn.Module, test_dl: DataLoader) -> xr.Dataset:
         for kk, vv in eval_meta.items():
             eval_data[kk].append(vv)
 
-    ds = _eval_data_to_ds(eval_data, assign_sample=False, site_keys=site_keys)
+    ds = _eval_data_to_ds(
+        eval_data,
+        data_keys=["obs", "sim"],
+        assign_sample=False,
+        denorm=denorm,
+        denorm_var=denorm_var,
+        site_keys=site_keys,
+    )
     return ds

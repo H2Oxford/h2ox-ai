@@ -7,6 +7,7 @@ dataset_parameters:
     pytorch_dataset: h2ox.ai.dataset.dataset.FcastDataset
     normalise: ["targets_WATER_VOLUME"]
     zscore: ["historic_t2m","historic_tp","forecast_tp", "forecast_t2m"]
+    drop_duplicate_vars: ["doy_cos","doy_sin"]
     historical_seq_len: 60
     forecast_horizon: 14
     future_horizon: 76
@@ -22,6 +23,8 @@ dataset_parameters:
       - "krishnaraja_sagar"
     target_var: ["targets_WATER_VOLUME"]
     target_difference: true
+    norm_difference: true
+    shift_target: false
     historic_variables: ["historic_t2m","historic_tp","targets_WATER_VOLUME","doy_cos","doy_sin"]
     forecast_variables: ["forecast_tp", "forecast_t2m","doy_cos","doy_sin"]
     future_variables: ["doy_cos","doy_sin"]
@@ -135,20 +138,34 @@ data_parameters:
           - lower_bhawani
           - krishnaraja_sagar
 model_parameters:
-    # Model Parameters
+    model_str: bayesian
     hidden_size: 36
     num_layers: 3
-    dropout: 0.4
+    dropout: 0.
+    bayesian: true
+    lstm_params:
+        freeze: false
+        bias: true
+        peephole: false
+        prior_pi: 1.
+        prior_sigma_1: 0.1
+        prior_sigma_2: 0.002
+        posterior_mu_init: 0
+        posterior_rho_init: -6
 
 training_parameters:
     # Training Parameters
     num_workers: 12
-    random_val_split: false
+    random_val_split: true
     log_every_n_steps: 10
-    checkpoint_every_n: 1
+    checkpoint_every_n: 10
     eval_test: false
     batch_size: 100
-    n_epochs: 50
+    n_epochs: 150
     epochs_loss_cliff: 25
-    validate_every_n: 1
+    validate_every_n: 10
     cleanup: false
+    learning_rate: 0.005
+    schedule_params:
+        step_size: 10
+        gamma: 0.8

@@ -132,8 +132,11 @@ class S2S2SModel(nn.Module):
         assert (
             hidden_size % target_size == 0
         ), "hidden size must be multiple of target size"
-        stride = kernel = hidden_size // target_size
-        conv1d = torch.nn.Conv1d(1, 1, kernel, stride=stride)
+        stride = kernel = hidden_size // target_size  # 36 // 6
+        conv1d = torch.nn.Conv1d(1, 1, kernel, stride=stride, bias=True)
+        # initalise bias to 0
+        conv1d.bias.data.fill_(0.0)
+        conv1d.weight.data.fill_(0.01)
         self.head = nn.Sequential(dropout, conv1d)
 
     def forward(self, data):
