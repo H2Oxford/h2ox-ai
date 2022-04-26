@@ -1,0 +1,7 @@
+tmp/*
+logs/*
+notebooks/*
+tests/*
+data/*
+experiments*/*
+*/*egg-info*/*
