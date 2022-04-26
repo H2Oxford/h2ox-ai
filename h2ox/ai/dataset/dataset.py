@@ -1,4 +1,3 @@
-import pickle
 from collections import defaultdict
 from datetime import timedelta
 from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
@@ -24,6 +23,7 @@ class FcastDataset(Dataset):
         future_horizon: int,
         target_var: str,
         target_difference: bool,
+        variables_difference: Optional[List[str]],
         shift_target: bool,
         historic_variables: List[str],  # noqa
         forecast_variables: List[str],  # noqa
@@ -54,6 +54,7 @@ class FcastDataset(Dataset):
         self.norm_difference = norm_difference
         self.drop_duplicate_vars = drop_duplicate_vars
         self.shift_target = shift_target
+        self.shift_variables = variables_difference
 
         # soft data and filtering rules
         self.normalise = normalise
@@ -332,9 +333,17 @@ class FcastDataset(Dataset):
             return ((arr - arr.min()) / (arr.max() - arr.min())) * 2.0 - 1  # -1 to 1
 
         # maybe normalise
-        logger.info("soft data transforms - maybe normalise or zscore")
+        logger.info("soft data transforms - maybe shift, normalise, or zscore")
         # store key metrics for recovery later
         self.augment_dict = {"normalise": {}, "zscore": {}, "std_norm": {}}
+
+        if self.shift_variables is not None:
+            for var in self.shift_variables:
+                data[var] = data[var] - data[var].shift(
+                    {"steps": 1}
+                )  # ).roll({'steps':-1})
+                data[var].loc[{"steps": timedelta(days=0)}] = 0
+
         if self.normalise is not None:
             for var in self.normalise:
                 self.augment_dict["normalise"][var] = {
@@ -436,13 +445,25 @@ class FcastDataset(Dataset):
         # SAVE ALL DATA to attribute
         logger.info("soft data transforms - build data Dictionary")
         data_ii = 0
+
+        # print ('DEMO_DATA')
+        # print ('dt', idxs[0])
+        # print('hist')
+        # print (self.historic.data[0,...])
+        # print ('forecast')
+        # print (self.forecast.data[0,...])
+        # print ('future')
+        # print (self.future.data[0,...])#
+        # print('target')
+        # print (self.targets.data[0,...])
+
         for ii, idx in enumerate(idxs):
 
             # final check on nan (this isn't great but am getting segfaults from interpolate_na
             if not (
                 np.isnan(self.historic.data[ii, ...]).any()
                 + np.isnan(self.forecast.data[ii, ...]).any()
-                + np.isnan(self.forecast.data[ii, ...]).any()
+                + np.isnan(self.future.data[ii, ...]).any()
                 + np.isnan(self.targets.data[ii, ...]).any()
             ):
 
@@ -513,7 +534,10 @@ class FcastDataset(Dataset):
                         )
 
                     data_ii += 1
+            else:
+                pass
 
+        # print ('ALL DATA KEYS',len(self.all_data.keys()))
         # print("SAMPLE ITEM")
         # print(self.all_data[0])
 
@@ -526,8 +550,8 @@ class FcastDataset(Dataset):
 
         self.n_samples = len(idxs)
 
-        pickle.dump(self.all_data, open("./data/ds_data.pkl", "wb"))
-        pickle.dump(self.sample_lookup, open("./data/ds_meta.pkl", "wb"))
+        # pickle.dump(self.all_data, open("./data/ds_data.pkl", "wb"))
+        # pickle.dump(self.sample_lookup, open("./data/ds_meta.pkl", "wb"))
 
     def _get_historic_data(
         self,
@@ -538,7 +562,7 @@ class FcastDataset(Dataset):
             [
                 data[self.historic_variables]
                 .sel({"steps": np.timedelta64(0)})
-                .shift({"date": ii})
+                .shift({"date": self.historical_seq_len - ii - 1})
                 for ii in range(self.historical_seq_len)
             ],
             pd.TimedeltaIndex(
