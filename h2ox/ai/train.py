@@ -67,7 +67,6 @@ def train(
     cache_model: bool = False,
     experiment: Optional[Experiment] = None,
 ) -> Tuple[List[float], ...]:
-
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
@@ -136,7 +135,6 @@ def train(
             learning_rate = optimizer.param_groups[0]["lr"]
 
             loss_float = float(loss.detach().cpu().numpy())
-
             epoch_losses.append(loss_float)
             epoch_loss = np.mean(epoch_losses)
 
