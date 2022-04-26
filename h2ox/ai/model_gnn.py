@@ -6,6 +6,7 @@ from blitz.modules import BayesianLSTM
 from blitz.utils import variational_estimator
 from torch import nn
 
+from h2ox.ai.dummy_blin import BayesianLinear
 from h2ox.ai.gnn import GraphConvolution
 
 
@@ -212,6 +213,17 @@ class Decoder(nn.Module):
         return outp, torch.stack(new_hiddens, dim=1), torch.stack(new_cells, dim=1)
 
 
+class BayesianRegressor(nn.Module):
+    def __init__(self, input_dim, output_dim, bias, device):
+        super().__init__()
+        # self.linear = nn.Linear(input_dim, output_dim)
+        self.blinear = BayesianLinear(input_dim, output_dim, bias)
+        self.blinear.device = device
+
+    def forward(self, x):
+        return self.blinear(x)
+
+
 @variational_estimator
 class LayeredBayesianGraphLSTM(nn.Module):
     def __init__(
@@ -231,7 +243,8 @@ class LayeredBayesianGraphLSTM(nn.Module):
         diag: bool = True,
         num_layers: int = 1,
         dropout: float = 0.4,
-        bayesian: bool = True,
+        bayesian_lstm: bool = True,
+        bayesian_linear: bool = True,
         device: str = "cpu",
         lstm_params: Optional[dict] = None
         # include_current_timestep_in_horizon: bool = True,
@@ -268,60 +281,94 @@ class LayeredBayesianGraphLSTM(nn.Module):
 
         self.encoders = nn.ModuleDict(
             {
-                site: Encoder(layers_historic, device, bayesian, lstm_params).to(device)
+                site: Encoder(layers_historic, device, bayesian_lstm, lstm_params).to(
+                    device
+                )
                 for site in sites
             }
         )
         # self.encoder_pre = nn.Linear(historical_input_size,hidden_size, bias=False)
         self.decoders_forecast = nn.ModuleDict(
             {
-                site: Decoder(layers_forecast, device, bayesian, lstm_params).to(device)
+                site: Decoder(layers_forecast, device, bayesian_lstm, lstm_params).to(
+                    device
+                )
                 for site in sites
             }
         )
         # self.decoder_pre = nn.Linear(forecast_input_size, hidden_size, bias=False)
         self.decoders_future = nn.ModuleDict(
             {
-                site: Decoder(layers_future, device, bayesian, lstm_params).to(device)
-                for site in sites
-            }
-        )
-
-        self.headers_in = nn.ModuleDict(
-            {
-                site: nn.Sequential(
-                    nn.Linear(hidden_size + 1, hidden_size, bias=False),
-                    nn.Dropout(p=dropout),
-                    nn.ReLU(),
+                site: Decoder(layers_future, device, bayesian_lstm, lstm_params).to(
+                    device
                 )
                 for site in sites
             }
         )
 
-        self.headers_out = nn.ModuleDict(
-            {
-                site: nn.Sequential(
-                    nn.ReLU(),
-                    nn.Dropout(p=dropout),
-                    nn.Linear(hidden_size, 1, bias=False),
-                )
-                for site in sites
-            }
-        )
+        if bayesian_linear:
+            self.headers_in = nn.ModuleDict(
+                {
+                    site: nn.Sequential(
+                        BayesianRegressor(
+                            hidden_size + 1, hidden_size, bias=False, device=device
+                        ).to(device),
+                        # nn.ReLU(),
+                    )
+                    for site in sites
+                }
+            )
+
+            self.headers_out = nn.ModuleDict(
+                {
+                    site: nn.Sequential(
+                        # nn.ReLU(),
+                        BayesianRegressor(hidden_size, 1, bias=False, device=device).to(
+                            device
+                        ),
+                    )
+                    for site in sites
+                }
+            )
+
+        else:
+            self.headers_in = nn.ModuleDict(
+                {
+                    site: nn.Sequential(
+                        nn.Linear(hidden_size + 1, hidden_size, bias=False),
+                        nn.Dropout(p=dropout),
+                        nn.ReLU(),
+                    )
+                    for site in sites
+                }
+            )
+
+            self.headers_out = nn.ModuleDict(
+                {
+                    site: nn.Sequential(
+                        nn.ReLU(),
+                        nn.Dropout(p=dropout),
+                        nn.Linear(hidden_size, 1, bias=False),
+                    )
+                    for site in sites
+                }
+            )
 
         self.gnn = GraphConvolution(hidden_size, hidden_size, bias=True)
 
         self.adj = np.zeros((len(sites), len(sites)), dtype=np.float32)
 
         for s1, s2 in sites_edges:
-            self.adj[sites.index(s1), sites.index(s2)] = 1
+            if s1 in sites and s2 in sites:
+                self.adj[sites.index(s1), sites.index(s2)] = 1
 
         if diag:
             self.adj += np.diag(np.ones(len(sites)))
 
         if digraph:
             for s1, s2 in sites_edges:
-                self.adj[sites.index(s2), sites.index(s1)] = -1
+                if s1 in sites and s2 in sites:
+                    self.adj[sites.index(s2), sites.index(s1)] = -1
 
         self.adj = torch.from_numpy(self.adj).to(device)
 
@@ -329,7 +376,10 @@ class LayeredBayesianGraphLSTM(nn.Module):
         return flows * self.flow_std[site]
 
     def forward(self, data):
+
+        # print (data.keys())
         batch_size = data[self.sites[0]]["x_d"].shape[0]
+        # print ('SHAPE',data[self.sites[0]]["x_d"].shape)
         # RUN HISTORY
 
         # feedforward the endocders
@@ -394,11 +444,10 @@ class LayeredBayesianGraphLSTM(nn.Module):
                 #    ], dim=-1)
                 # ).shape)
 
-                # put through first header
                 output_t[:, ii_s, :] = self.headers_in[site](
-                    torch.cat(
-                        [output, site_levels[site].unsqueeze(-1)], dim=-1
-                    ).squeeze()
+                    torch.cat([output, site_levels[site].unsqueeze(-1)], dim=-1)
+                    .squeeze()
+                    .to(self.device)
                 )
 
             # graph convolve
@@ -433,9 +482,9 @@ class LayeredBayesianGraphLSTM(nn.Module):
 
                 # put through header
                 output_t[:, ii_s, :] = self.headers_in[site](
-                    torch.cat(
-                        [output, site_levels[site].unsqueeze(-1)], dim=-1
-                    ).squeeze()
+                    torch.cat([output, site_levels[site].unsqueeze(-1)], dim=-1)
+                    .squeeze()
+                    .to(self.device)
                 )
 
             # graph convolve
@@ -467,10 +516,13 @@ def initialise_gnn(
     hidden_size: int = 6,
     num_layers: int = 1,
     dropout: float = 0.4,
-    bayesian: bool = True,
+    bayesian_linear: bool = True,
+    bayesian_lstm: bool = True,
     lstm_params: Optional[dict] = None,
 ) -> LayeredBayesianGraphLSTM:
     # initialise model shapes
+    print("KEYS", item.keys())
+
     forecast_horizon = item[sites[0]]["x_f"].shape[0]
     future_horizon = item[sites[0]]["x_ff"].shape[0]
 
@@ -506,7 +558,8 @@ def initialise_gnn(
         target_size=target_size,
         num_layers=num_layers,
         dropout=dropout,
-        bayesian=bayesian,
+        bayesian_linear=bayesian_linear,
+        bayesian_lstm=bayesian_lstm,
         device=device,
         lstm_params=lstm_params,
     )

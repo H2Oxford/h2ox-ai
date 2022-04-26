@@ -7,6 +7,7 @@ TODO:
 Returns:
     [type]: [description]
 """
+import json
 import os
 import pickle
 from glob import glob
@@ -17,7 +18,7 @@ from loguru import logger
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from h2ox.ai.dataset import DatasetFactory
+from h2ox.ai.dataset import DatasetFactory, maybe_load
 from h2ox.ai.dataset.dataset import train_validation_test_split
 from h2ox.ai.dataset.utils import calculate_errors, revert_to_levels
 from h2ox.ai.experiment import ex
@@ -35,6 +36,24 @@ from h2ox.ai.train import test as test_s2s2s
 from h2ox.ai.train import train as train_s2s2s
 from h2ox.ai.train_bayesian import test as test_bayesian
 from h2ox.ai.train_bayesian import train as train_bayesian
+
+
+def dict_xr(xrd):
+    return dict(zip(xrd["coords"]["global_sites"]["data"], xrd["data"]))
+
+
+def var_norms_to_json(var_norms):
+    var_norms_json = {}
+    for norm_type in var_norms.keys():
+        var_norms_json[norm_type] = {}
+        for var in var_norms[norm_type].keys():
+            var_norms_json[norm_type][var] = {}
+            for param in var_norms[norm_type][var].keys():
+                var_norms_json[norm_type][var][param] = dict_xr(
+                    var_norms[norm_type][var][param].to_dict()
+                )
+
+    return var_norms_json
 
 
 @ex.automain
@@ -124,7 +143,7 @@ def main(
             hidden_size=model_parameters["hidden_size"],
             num_layers=model_parameters["num_layers"],
             dropout=model_parameters["dropout"],
-            bayesian=model_parameters["bayesian"],
+            bayesian=model_parameters["bayesian_lstm"],
             lstm_params=model_parameters["lstm_params"],
         )
         test = test_bayesian
@@ -133,14 +152,15 @@ def main(
     elif model_parameters["model_str"] == "gnn":
         model = initialise_gnn(
             item,
-            sites=dataset_parameters["select_sites"],
-            sites_edges=dataset_parameters["sites_edges"],
+            sites=maybe_load(dataset_parameters["select_sites"]),
+            sites_edges=maybe_load(dataset_parameters["sites_edges"]),
             flow_std=std_target,
             device=device,
             hidden_size=model_parameters["hidden_size"],
             num_layers=model_parameters["num_layers"],
             dropout=model_parameters["dropout"],
-            bayesian=model_parameters["bayesian"],
+            bayesian_linear=model_parameters["bayesian_linear"],
+            bayesian_lstm=model_parameters["bayesian_lstm"],
             lstm_params=model_parameters["lstm_params"],
         )
         test = test_bayesian
@@ -253,8 +273,9 @@ def main(
     logger.info(f"Writing prediction and error datasets to .nc at {filepath}")
     errors.to_netcdf(filepath / "errors.nc")
     preds.to_netcdf(filepath / "preds.nc")
+    pickle.dump(item, open(filepath / "dummy_item.pkl", "wb"))
     if var_norms is not None:
-        pickle.dump(var_norms, open(filepath / "var_norms.pkl", "wb"))
+        json.dump(var_norms_to_json(var_norms), open(filepath / "var_norms.json", "w"))
 
     logger.info("Archiving plot and data artifacts")
     artifacts = glob(str(filepath / "*"))

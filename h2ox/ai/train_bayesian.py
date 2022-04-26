@@ -102,7 +102,7 @@ def train(
                 labels=data["y"],
                 criterion=loss_fn,
                 sample_nbr=3,
-                complexity_cost_weight=1.0 / data["y"].shape[0] / 500,
+                complexity_cost_weight=1.0 / data["y"].shape[0] / 500000,
             )
 
             if ii == 0:
@@ -212,7 +212,7 @@ def mc_sample_paths(model, X, N_samples=100, ci_std=2):
 
     preds = torch.stack(preds)
 
-    paths = preds.cumsum(dim=2)
+    paths = preds.cumsum(dim=2)  # [S, B, T, F]
 
     means = paths.mean(axis=0)
     path_stds = paths.std(axis=0)
