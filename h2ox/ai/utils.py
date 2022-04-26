@@ -36,55 +36,55 @@ def _process_metadata(
 def _eval_data_to_ds(
     eval_data: DefaultDict[str, List[np.ndarray]],
     site_keys: Optional[List[str]] = None,
+    data_keys: Optional[List[str]] = None,
     assign_sample: bool = False,
+    denorm: Optional[dict] = None,
+    denorm_var: Optional[str] = None,
     time_dim: str = "date",
     horizon_dim: str = "step",
     site_dim: str = "site",
 ) -> xr.Dataset:
+
+    if data_keys is None:
+        data_keys = ["obs", "sim"]
+
     # get correct shapes for arrays as output
-    obs = np.concatenate(eval_data["obs"], axis=0)
-    sim = np.concatenate(eval_data["sim"], axis=0)
+    ds_data = {kk: np.concatenate(eval_data[kk], axis=0) for kk in data_keys}
     time = np.concatenate(eval_data["time"], axis=0)
     init_time = np.concatenate(eval_data["init_time"], axis=0)
 
     if site_dim in eval_data.keys():
         # is one-hot-encoded, deshape:
         sites = np.concatenate(eval_data[site_dim], axis=0)
-
-        obs = np.stack([obs[sites == site, :] for site in np.unique(sites)], axis=-1)
-        sim = np.stack([sim[sites == site, :] for site in np.unique(sites)], axis=-1)
-        time = np.stack([time[sites == site, :] for site in np.unique(sites)], axis=-1)
-        init_time = np.stack(
-            [init_time[sites == site] for site in np.unique(sites)], axis=-1
-        )
+        for kk in data_keys:
+            ds_data[kk] = np.stack(
+                [ds_data[kk][sites == site, :] for site in np.unique(sites)], axis=-1
+            )
 
         # assert (np.diff(init_time,axis=1)==timedelta(days=0)).all(), ""
         time = time[:, :, 0]
         init_time = init_time[:, 0]
 
-    # recover a 4d array: time x site x horizon x variable
-    if site_keys is None:
-        site_keys = np.arange(obs.shape[-1])
-
     coords = {
         time_dim: init_time,
-        horizon_dim: np.arange(sim.shape[1]),
+        horizon_dim: np.arange(ds_data[data_keys[0]].shape[1]),
         "site": site_keys,
     }
+
+    ds_data = {kk: ((time_dim, horizon_dim, "site"), vv) for kk, vv in ds_data.items()}
+    ds_data["valid_time"] = ((time_dim, horizon_dim), time)
+
     ds = xr.Dataset(
-        {
-            "obs": (
-                (time_dim, horizon_dim, "site"),
-                obs,
-            ),
-            "sim": (
-                (time_dim, horizon_dim, "site"),
-                sim,
-            ),
-            "valid_time": ((time_dim, horizon_dim), time),
-        },
+        ds_data,
         coords=coords,
     )
+
+    if denorm is not None:
+        for var in data_keys:
+            # ds[var] = ((ds[var]+1.)/2.)*(denorm['normalise'][denorm_var]['max'].rename({'global_sites':'site'}) - denorm['normalise'][denorm_var]['min'].rename({'global_sites':'site'}))+denorm['normalise'][denorm_var]['min'].rename({'global_sites':'site'})
+            ds[var] = ds[var] * denorm["std_norm"][denorm_var]["std"].rename(
+                {"global_sites": "site"}
+            )
 
     return ds
 
@@ -144,10 +144,10 @@ def _save_weights_and_optimizer(
     return weight_path, optimizer_path
 
 
-def get_exponential_weights(horizon: int, clip:float) -> torch.Tensor:
+def get_exponential_weights(horizon: int, clip: float) -> torch.Tensor:
     # exponential weighting
-    wt = np.exp(np.linspace(0, 5, horizon))[::-1]
-    wt[int(horizon*clip):] = 0
+    wt = np.exp(np.linspace(0, 1, horizon))[::-1]
+    wt[int(horizon * clip) :] = 0
     wt = wt / np.linalg.norm(wt)
     wt = torch.from_numpy(wt)
     return wt

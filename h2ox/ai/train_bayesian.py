@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import xarray as xr
 from sacred import Experiment
-from torch import nn, optim
+from torch import nn
 from torch.utils.data import DataLoader, Subset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -26,25 +26,21 @@ def weighted_mse_loss(
     return torch.sum(weight * (input - target) ** 2)
 
 
-def initialise_training(
-    model, device: str, loss_rate: float = 5e-2, schedule_params: Optional[dict] = None
-) -> Tuple[Any, Any, Any]:
-    # use ADAM optimizer
-    optimizer = optim.Adam([pam for pam in model.parameters()], lr=loss_rate)  # 0.05
-
-    # reduce loss rate every \step_size epochs by \gamma
-    #  from initial \lr
-    if schedule_params is not None:
-        scheduler = optim.lr_scheduler.StepLR(optimizer, **schedule_params)
+def move_to(obj, device):
+    if torch.is_tensor(obj):
+        return obj.to(device)
+    elif isinstance(obj, dict):
+        res = {}
+        for k, v in obj.items():
+            res[k] = move_to(v, device)
+        return res
+    elif isinstance(obj, list):
+        res = []
+        for v in obj:
+            res.append(move_to(v, device))
+        return res
     else:
-        scheduler = None
-
-    # use MSE Loss function
-    loss_fn = nn.MSELoss().to(device)
-    # loss_fn = nn.SmoothL1Loss().to(device)
-    # loss_fn = weighted_mse_loss
-
-    return optimizer, scheduler, loss_fn
+        raise TypeError("Invalid type for move_to")
 
 
 @ex.capture
@@ -67,12 +63,12 @@ def train(
     cache_model: bool = False,
     experiment: Optional[Experiment] = None,
 ) -> Tuple[List[float], ...]:
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
     all_losses = []
     all_val_losses = []
-    count_nans = 0
     for epoch in range(epochs):
         #  train the model (turn dropout on ...)
         model.train()
@@ -81,29 +77,43 @@ def train(
         pbar = tqdm(train_dl, f"Epoch {epoch + 1}")
         for ii, data in enumerate(pbar):
             # move onto GPU (if exists)
-            for key in [k for k in data.keys() if k != "meta"]:
-                data[key] = data[key].to(device)
-
+            # for key in [k for k in data.keys() if k != "meta"]:
+            #    data[key] = data[key].to(device)
             optimizer.zero_grad()
 
-            # forward pass
-            yhat = model(data).to(device)
-            y = data["y"]
+            # X = {kk:vv.to(device) for kk,vv in data.items() if kk in ['x_d','x_f','x_ff']}
+            # X = {kk:torch.zeros(vv.shape).to(device) for kk,vv in data.items() if kk in ['x_d','x_f','x_ff']}
 
-            # calculate loss, maybe with weights
-            if "weighted_mse_loss" in loss_fn.__repr__():
-                wt = get_exponential_weights(
-                    horizon=model.target_horizon,
-                    clip=min((epoch + 1) / epochs_loss_cliff, 1),
-                ).to(device)
-                wt = torch.stack([wt] * y.squeeze().shape[-1], dim=1)
-                loss = loss_fn(yhat.squeeze(), y.squeeze(), wt)
-            else:
-                loss = loss_fn(yhat.squeeze(), y.squeeze())
+            data = move_to(data, device)
+
+            data["y"] = data["y"].squeeze().to(device)
+            # Y = torch.zeros(data['y'].shape).to(device)
+            # yhat = model.forward_deterministic(X).to(device)
+
+            # loss = loss_fn(yhat.squeeze(), data['y'].squeeze())
+
+            (
+                yhat,
+                loss,
+                likelihood_loss,
+                complexity_loss,
+            ) = model.sample_elbo_detailed_loss(
+                inputs=data,
+                labels=data["y"],
+                criterion=loss_fn,
+                sample_nbr=3,
+                complexity_cost_weight=1.0 / data["y"].shape[0] / 500000,
+            )
 
             if ii == 0:
                 print(
-                    "loss:", "combined", loss.detach().cpu().numpy()
+                    "loss:",
+                    "combined",
+                    loss.detach().cpu().numpy(),
+                    "likelihood",
+                    likelihood_loss.detach().cpu().numpy(),
+                    "complexity",
+                    complexity_loss,
                 )  # .detach().cpu().numpy())
                 print(
                     "Y",
@@ -117,17 +127,17 @@ def train(
                 print(
                     "yhat",
                     "max",
-                    torch.amax(yhat, dim=(0, 1)).detach().cpu().numpy(),
+                    yhat[0, ...].max(axis=(0, 1)),
                     "min",
-                    torch.amin(yhat, dim=(0, 1)).detach().cpu().numpy(),
+                    yhat[0, ...].min(axis=(0, 1)),
                     "mean",
-                    torch.mean(yhat, dim=(0, 1)).detach().cpu().numpy(),
+                    yhat[0, ...].mean(axis=(0, 1)),
                 )
 
-                for name, p in model.named_parameters():
-                    print(name, p.requires_grad, p.data.mean())
+                # for name, p in model.named_parameters():
+                #    if 'head' in name or 'pre' in name:
+                #        print (name, p.requires_grad, p.data.mean())
 
-            #  calculate gradients and change weights
             loss.backward()
             optimizer.step()
 
@@ -135,13 +145,13 @@ def train(
             learning_rate = optimizer.param_groups[0]["lr"]
 
             loss_float = float(loss.detach().cpu().numpy())
+
             epoch_losses.append(loss_float)
             epoch_loss = np.mean(epoch_losses)
 
-            pbar.set_postfix_str(
-                f"Loss: {epoch_loss:.2f}  Lr: {learning_rate:.4f}  nans:  {count_nans}"
-            )
+            pbar.set_postfix_str(f"Loss: {epoch_loss:.5f}  Lr: {learning_rate:.4f}")
 
+        epoch_loss = np.mean(epoch_losses)
         writer.add_scalar("Loss/train", epoch_loss, epoch)
         ex.log_scalar("Loss/train", epoch_loss, epoch)
 
@@ -150,6 +160,7 @@ def train(
             scheduler.step()
 
         all_losses.append(epoch_loss)
+
         if epoch % validate_every_n == 0:
 
             if val_dl is not None:
@@ -168,6 +179,7 @@ def train(
 
         # checkpoint training or save final model
         if (epoch % checkpoint_every_n == 0) or (epoch == epochs - 1):
+
             _save_weights_and_optimizer(
                 epoch=epoch,
                 model=model,
@@ -175,6 +187,46 @@ def train(
             )
 
     return (all_losses, all_val_losses)
+
+
+def mc_sample(model, X, N_samples=100, ci_std=2):
+    preds = [model(X) for _ in range(N_samples)]
+    preds = torch.stack(preds)
+    means = preds.mean(axis=0)
+    stds = preds.std(axis=0)
+
+    # maybe need to go to and back from levels vs. deltas
+
+    ci_upper = means + (ci_std * stds)
+    ci_lower = means - (ci_std * stds)
+    return means, stds, ci_upper, ci_lower
+
+
+def mc_sample_paths(model, X, N_samples=100, ci_std=2):
+    def reverse_cumsum(arr, dim):
+        shp = list(arr.shape)
+        shp[dim] = 1
+        return torch.diff(arr, dim=dim, prepend=torch.zeros(*list(shp)).to(arr.device))
+
+    preds = [model(X) for _ in range(N_samples)]
+
+    preds = torch.stack(preds)
+
+    paths = preds.cumsum(dim=2)  # [S, B, T, F]
+
+    means = paths.mean(axis=0)
+    path_stds = paths.std(axis=0)
+
+    # maybe need to go to and back from levels vs. deltas
+
+    ci_upper = means + (ci_std * path_stds)
+    ci_lower = means - (ci_std * path_stds)
+
+    means = reverse_cumsum(means, dim=1)
+    ci_upper = reverse_cumsum(ci_upper, dim=1)
+    ci_lower = reverse_cumsum(ci_lower, dim=1)
+
+    return means, path_stds, ci_upper, ci_lower
 
 
 def validate(
@@ -206,11 +258,13 @@ def validate(
     eval_data = defaultdict(list)
     for data in pbar:
         # move to device
-        for key in [k for k in data.keys() if k != "meta"]:
-            data[key] = data[key].to(device)
+        data = move_to(data, device)
 
-        # forward pass
-        yhat = model(data).to(device)
+        # X = {kk:vv.to(device) for kk,vv in data.items() if kk in ['x_d','x_f','x_ff']}
+        data["y"] = data["y"].squeeze().to(device)
+
+        # forward pass - deterministic
+        yhat = model.forward(data).to(device)
         y = data["y"]
 
         # calculate loss
@@ -232,7 +286,15 @@ def validate(
 
         # Create a dictionary of the results
         eval_data["obs"].append(obs)
-        eval_data["sim"].append(sim)
+        eval_data["sim-frozen"].append(sim)
+
+        means, stds, ci_upper, ci_lower = mc_sample(model, data, N_samples=50)
+
+        eval_data["sim-mean"].append(means.squeeze().detach().cpu().numpy())
+        eval_data["sim-std"].append(stds.squeeze().detach().cpu().numpy())
+        eval_data["ci-95+"].append(ci_upper.squeeze().detach().cpu().numpy())
+        eval_data["ci-95-"].append(ci_lower.squeeze().detach().cpu().numpy())
+
         for kk, vv in eval_meta.items():
             eval_data[kk].append(vv)
 
@@ -240,18 +302,40 @@ def validate(
 
     ds = _eval_data_to_ds(
         eval_data,
+        data_keys=["obs", "sim-frozen", "sim-mean", "sim-std", "ci-95+", "ci-95-"],
         assign_sample=False,
-        data_keys=["obs", "sim"],
         denorm=denorm,
         denorm_var=denorm_var,
         site_keys=site_keys,
     )
-    ds = calculate_errors(ds, obs_var="obs", sim_var="sim", site_dim="site")
 
-    target_horizon = ds["step"].shape[0]
+    ds_errors = calculate_errors(
+        ds, obs_var="obs", sim_var="sim-frozen", site_dim="site"
+    )
+
+    target_horizon = ds_errors["step"].shape[0]
+
+    std_dict = dict(
+        zip(
+            [str(ii) for ii in range(1, target_horizon, log_every_n_steps)],
+            ds["sim-std"]
+            .mean(dim=("site", "date"))
+            .sel({"step": range(1, target_horizon, log_every_n_steps)})
+            .to_dict()["data"],
+        )
+    )
+
+    for kk, vv in std_dict.items():
+        ex.log_scalar(f"Bayesian/std/{kk}", np.array(vv), epoch)
+
+    writer.add_scalars(
+        "Bayesian/std",
+        std_dict,
+        epoch,
+    )
 
     scalar_dict = (
-        ds.mean(dim="site")
+        ds_errors.mean(dim="site")
         .sel({"step": range(1, target_horizon, log_every_n_steps)})
         .to_dict()
     )
@@ -301,11 +385,15 @@ def test(
     eval_data = defaultdict(list)
     for data in tqdm(test_dl, "Running Evaluation"):
         # move to device
-        for key in [k for k in data.keys() if k != "meta"]:
-            data[key] = data[key].to(device)
+        # X = {kk:vv.to(device) for kk,vv in data.items() if kk in ['x_d','x_f','x_ff']}
+        # X = {kk:torch.zeros(vv.shape).to(device) for kk,vv in data.items() if kk in ['x_d','x_f','x_ff']}
 
-        yhat = model(data).to(device)
-        y = data["y"]
+        data = move_to(data, device)
+
+        y = data["y"].to(device)
+
+        # forward pass - deterministic
+        yhat = model.forward(data).to(device)
 
         eval_meta = _process_metadata(data, meta_lookup)
 
@@ -315,16 +403,25 @@ def test(
 
         # Create a dictionary of the results
         eval_data["obs"].append(obs)
-        eval_data["sim"].append(sim)
+        eval_data["sim-frozen"].append(sim)
+
+        means, stds, ci_upper, ci_lower = mc_sample_paths(model, data, N_samples=50)
+
+        eval_data["sim-mean"].append(means.squeeze().detach().cpu().numpy())
+        eval_data["sim-std"].append(stds.squeeze().detach().cpu().numpy())
+        eval_data["ci-95+"].append(ci_upper.squeeze().detach().cpu().numpy())
+        eval_data["ci-95-"].append(ci_lower.squeeze().detach().cpu().numpy())
+
         for kk, vv in eval_meta.items():
             eval_data[kk].append(vv)
 
     ds = _eval_data_to_ds(
         eval_data,
-        data_keys=["obs", "sim"],
+        data_keys=["obs", "sim-frozen", "sim-mean", "sim-std", "ci-95+", "ci-95-"],
         assign_sample=False,
         denorm=denorm,
         denorm_var=denorm_var,
         site_keys=site_keys,
     )
+
     return ds

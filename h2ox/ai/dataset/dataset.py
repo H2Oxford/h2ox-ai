@@ -23,13 +23,18 @@ class FcastDataset(Dataset):
         future_horizon: int,
         target_var: str,
         target_difference: bool,
+        variables_difference: Optional[List[str]],
+        shift_target: bool,
         historic_variables: List[str],  # noqa
         forecast_variables: List[str],  # noqa
         future_variables: List[str],
         max_consecutive_nan: int,
         ohe_or_multi: str,
+        drop_duplicate_vars: Optional[List[str]],
         normalise: Optional[List[str]],
         zscore: Optional[List[str]],
+        std_norm: Optional[List[str]],
+        norm_difference: Optional[bool],
         time_dim: str = "date",
         horizon_dim: str = "steps",
         **kwargs,
@@ -44,12 +49,17 @@ class FcastDataset(Dataset):
         self.future_variables = future_variables
         self.time_dim = time_dim
         self.horizon_dim = horizon_dim
-        self.sites = data["global_sites"].values
+        self.sites = select_sites
         self.sites_dictionary = dict(enumerate(self.sites))
+        self.norm_difference = norm_difference
+        self.drop_duplicate_vars = drop_duplicate_vars
+        self.shift_target = shift_target
+        self.shift_variables = variables_difference
 
         # soft data and filtering rules
         self.normalise = normalise
         self.zscore = zscore
+        self.std_norm = std_norm
         self.max_consecutive_nan = max_consecutive_nan
 
         # self.include = include_doy
@@ -149,6 +159,16 @@ class FcastDataset(Dataset):
             {"date-site": ("date", "global_sites")}
         )
 
+    def _drop_duplicates(self, data):
+
+        drop_idxs = []
+        for var in self.drop_duplicate_vars:
+            drop_idxs.append(np.where(data["variable"].data == var)[0][1:])
+
+        keep_idx = ~np.isin(np.arange(data.shape[-1]), np.union1d(*drop_idxs))
+
+        return data.isel({"sites-variable": keep_idx})
+
     def _reshape_data_multi(self, data, valid_dates):
 
         historic = (
@@ -177,12 +197,55 @@ class FcastDataset(Dataset):
             .transpose("date", "target_roll", "sites-variable")
         )
 
+        if self.drop_duplicate_vars is not None:
+            historic = self._drop_duplicates(historic)
+            forecast = self._drop_duplicates(forecast)
+            future = self._drop_duplicates(future)
+
         idxs = historic["date"].data[np.isin(historic["date"].data, valid_dates)]
 
-        self.historic = historic.sel({"date": idxs}).data
-        self.forecast = forecast.sel({"date": idxs}).data
-        self.future = future.sel({"date": idxs}).data
-        self.targets = targets.sel({"date": idxs}).data
+        self.historic = historic.sel({"date": idxs})
+        self.forecast = forecast.sel({"date": idxs})
+        self.future = future.sel({"date": idxs})
+        self.targets = targets.sel({"date": idxs})
+
+        return idxs
+
+    def _reshape_data_sitewise(self, data, valid_dates):
+
+        historic = (
+            self._get_historic_data(data)
+            .drop("steps")
+            .transpose("date", "historic_roll", "global_sites", "variable")
+        )
+
+        forecast = self._get_forecast_data(data).transpose(
+            "date", "steps", "global_sites", "variable"
+        )
+
+        future = self._get_future_data(data).transpose(
+            "date", "steps", "global_sites", "variable"
+        )
+
+        targets = (
+            self._get_target_data(data)
+            .drop("steps")
+            .transpose("date", "target_roll", "global_sites", "variable")
+        )
+
+        print("historic")
+        print(historic)
+        print("forecast")
+        print(forecast)
+        print("future")
+        print(future)
+
+        idxs = historic["date"].data[np.isin(historic["date"].data, valid_dates)]
+
+        self.historic = historic.sel({"date": idxs})
+        self.forecast = forecast.sel({"date": idxs})
+        self.future = future.sel({"date": idxs})
+        self.targets = targets.sel({"date": idxs})
 
         return idxs
 
@@ -210,26 +273,22 @@ class FcastDataset(Dataset):
             historic.sel({"date-site": idxs})
             .to_array()
             .transpose("date-site", "historic_roll", "variable")
-            .data
         )
         self.forecast = (
             forecast.sel({"date-site": idxs})
             .to_array()
             .transpose("date-site", "steps", "variable")
-            .data
         )
         self.future = (
             future.sel({"date-site": idxs})
             .to_array()
             .transpose("date-site", "steps", "variable")
-            .data
         )
         self.targets = (
             targets.sel({"date-site": idxs})
             .to_array()
             .transpose("date-site", "target_roll", "variable")
             .sel({"variable": self.target_var})
-            .data
         )
 
         return idxs
@@ -255,6 +314,8 @@ class FcastDataset(Dataset):
         self.all_data: DefaultDict[int, Dict] = defaultdict(dict)
         self.sample_lookup: Dict[int, Tuple[str, pd.Timestamp]] = {}
 
+        data = data.sel({"global_sites": self.sites})
+
         self.site_keys = data["global_sites"].values
 
         # TODO: but are you sure you want to do this here? you want to normalise the data
@@ -262,13 +323,27 @@ class FcastDataset(Dataset):
         def zscore_func(arr):
             return (arr - arr.mean()) / arr.std()  # -ve to +ve std
 
+        def std_func(arr):
+            return arr / arr.std()  # -ve to +ve std
+
         def norm_func(arr):
             return (arr - arr.min()) / (arr.max() - arr.min())  # 0 to 1
 
+        def norm_func_nv(arr):
+            return ((arr - arr.min()) / (arr.max() - arr.min())) * 2.0 - 1  # -1 to 1
+
         # maybe normalise
-        logger.info("soft data transforms - maybe normalise or zscore")
+        logger.info("soft data transforms - maybe shift, normalise, or zscore")
         # store key metrics for recovery later
-        self.augment_dict = {"normalise": {}, "zscore": {}}
+        self.augment_dict = {"normalise": {}, "zscore": {}, "std_norm": {}}
+
+        if self.shift_variables is not None:
+            for var in self.shift_variables:
+                data[var] = data[var] - data[var].shift(
+                    {"steps": 1}
+                )  # ).roll({'steps':-1})
+                data[var].loc[{"steps": timedelta(days=0)}] = 0
+
         if self.normalise is not None:
             for var in self.normalise:
                 self.augment_dict["normalise"][var] = {
@@ -276,6 +351,13 @@ class FcastDataset(Dataset):
                     "min": data[var].groupby("global_sites").map(lambda arr: arr.min()),
                 }
                 data[var] = data[var].groupby("global_sites").map(norm_func)
+
+        if self.std_norm is not None:
+            for var in self.std_norm:
+                self.augment_dict["std_norm"][var] = {
+                    "std": data[var].groupby("global_sites").map(lambda arr: arr.std()),
+                }
+                data[var] = data[var].groupby("global_sites").map(std_func)
 
         if self.zscore is not None:
             for var in self.zscore:
@@ -303,6 +385,19 @@ class FcastDataset(Dataset):
             self.target_var = new_target_vars
             data = data.isel({"date": slice(1, None)})
 
+            if self.norm_difference:
+                for var in self.target_var:
+                    self.augment_dict["std_norm"][var] = {
+                        "std": data[var]
+                        .groupby("global_sites")
+                        .map(lambda arr: arr.std())
+                    }
+                    data[var] = data[var].groupby("global_sites").map(std_func)
+
+        # if self.shift_target:
+        #    for var in self.target_var:
+        #        data[var] = data[var]*2.-1.
+
         self.xr_ds = data.rename({"global_sites": "site", "steps": "step"})
 
         if self.ohe_or_multi == "multi":
@@ -313,28 +408,150 @@ class FcastDataset(Dataset):
             logger.info("soft data transforms - reshape with one-hot-encoding")
             idxs = self._reshape_data_ohe(data, valid_dates)
             self.metadata_columns = ["date", "site"]
+        elif self.ohe_or_multi == "sitewise":
+            logger.info("soft data transforms - reshape with sitewise data")
+            idxs = self._reshape_data_sitewise(data, valid_dates)
+            self.metadata_columns = ["date", "site"]
 
         logger.info(
             f"soft data transforms - data shape - historic:{self.historic.shape}; forecast:{self.forecast.shape}; future:{self.future.shape}; targets:{self.targets.shape}"
         )
 
-        # SAVE ALL DATA to attribute
-        logger.info("soft data transforms - build data Dictionary")
-        for ii, idx in enumerate(idxs):
-
-            self.all_data[ii] = {
-                "x_d": self.historic[ii, ...].astype(np.float32),
-                "x_f": self.forecast[ii, ...].astype(np.float32),
-                "x_ff": self.future[ii, ...].astype(np.float32),
-                "y": self.targets[ii, ...].astype(np.float32),
+        if self.ohe_or_multi == "sitewise":
+            historic_site_idx = {
+                site: list(self.historic["global_sites"].data).index(site)
+                for site in self.sites
+            }
+            forecast_site_idx = {
+                site: list(self.historic["global_sites"].data).index(site)
+                for site in self.sites
+            }
+            future_site_idx = {
+                site: list(self.historic["global_sites"].data).index(site)
+                for site in self.sites
+            }
+            targets_site_idx = {
+                site: list(self.historic["global_sites"].data).index(site)
+                for site in self.sites
             }
 
-            if isinstance(idx, tuple):
-                self.sample_lookup[ii] = dict(zip(self.metadata_columns, idx))
+            self.historic_levels = self.historic.sel(
+                {"variable": ["targets_WATER_VOLUME"]}
+            )
+            self.historic = self.historic.sel(
+                {"variable": self.historic["variable"] != "targets_WATER_VOLUME"}
+            )
+
+        # SAVE ALL DATA to attribute
+        logger.info("soft data transforms - build data Dictionary")
+        data_ii = 0
+
+        # print ('DEMO_DATA')
+        # print ('dt', idxs[0])
+        # print('hist')
+        # print (self.historic.data[0,...])
+        # print ('forecast')
+        # print (self.forecast.data[0,...])
+        # print ('future')
+        # print (self.future.data[0,...])#
+        # print('target')
+        # print (self.targets.data[0,...])
+
+        for ii, idx in enumerate(idxs):
+
+            # final check on nan (this isn't great but am getting segfaults from interpolate_na
+            if not (
+                np.isnan(self.historic.data[ii, ...]).any()
+                + np.isnan(self.forecast.data[ii, ...]).any()
+                + np.isnan(self.future.data[ii, ...]).any()
+                + np.isnan(self.targets.data[ii, ...]).any()
+            ):
+
+                if not self.ohe_or_multi == "sitewise":
+
+                    self.all_data[data_ii] = {
+                        "x_d": self.historic.data[ii, ...].astype(np.float32),
+                        "x_f": self.forecast.data[ii, ...].astype(np.float32),
+                        "x_ff": self.future.data[ii, ...].astype(np.float32),
+                        "y": self.targets.data[ii, ...].astype(np.float32),
+                    }
+
+                    if isinstance(idx, tuple):
+                        self.sample_lookup[data_ii] = dict(
+                            zip(self.metadata_columns, idx)
+                        )
+                    else:
+                        self.sample_lookup[data_ii] = dict(
+                            zip(self.metadata_columns, (idx,))
+                        )
+
+                    data_ii += 1
+
+                else:
+
+                    self.all_data[data_ii] = {
+                        site: {
+                            "hist_level": self.historic_levels.data[
+                                ii, :, historic_site_idx[site], :
+                            ].astype(np.float32),
+                            "x_d": self.historic.data[
+                                ii, :, historic_site_idx[site], :
+                            ].astype(np.float32),
+                            "x_f": self.forecast.data[
+                                ii, :, forecast_site_idx[site], :
+                            ].astype(np.float32),
+                            "x_ff": self.future.data[
+                                ii, :, future_site_idx[site], :
+                            ].astype(np.float32),
+                            "y": self.targets.data[
+                                ii, :, targets_site_idx[site], :
+                            ].astype(np.float32),
+                        }
+                        for site in self.sites
+                    }
+
+                    self.all_data[data_ii]["y"] = (
+                        self.targets.data[
+                            ii,
+                            :,
+                            tuple(targets_site_idx[site] for site in self.sites),
+                            :,
+                        ]
+                        .astype(np.float32)
+                        .transpose(1, 0, 2)
+                    )
+
+                    # print ('Y SHAPE DL')
+                    # print (self.all_data[data_ii]["y"].shape)
+
+                    if isinstance(idx, tuple):
+                        self.sample_lookup[data_ii] = dict(
+                            zip(self.metadata_columns, idx)
+                        )
+                    else:
+                        self.sample_lookup[data_ii] = dict(
+                            zip(self.metadata_columns, (idx,))
+                        )
+
+                    data_ii += 1
             else:
-                self.sample_lookup[ii] = dict(zip(self.metadata_columns, (idx,)))
+                pass
+
+        # print ('ALL DATA KEYS',len(self.all_data.keys()))
+        # print("SAMPLE ITEM")
+        # print(self.all_data[0])
+
+        # for ii in np.random.choice(len(idxs),3):
+        #    #print (self.all_data[ii])
+        #    for kk in ['x_d','x_f','x_ff','y']:
+        #        print (kk, self.all_data[ii][kk].shape, self.all_data[ii][kk].max(axis=0), self.all_data[ii][kk].min(axis=0), self.all_data[ii][kk].mean(axis=0))
+
+        #    print ('y stuff', self.all_data[ii]['y'].std(axis=0))
 
         self.n_samples = len(idxs)
+
+        # pickle.dump(self.all_data, open("./data/ds_data.pkl", "wb"))
+        # pickle.dump(self.sample_lookup, open("./data/ds_meta.pkl", "wb"))
 
     def _get_historic_data(
         self,
@@ -345,7 +562,7 @@ class FcastDataset(Dataset):
             [
                 data[self.historic_variables]
                 .sel({"steps": np.timedelta64(0)})
-                .shift({"date": ii})
+                .shift({"date": self.historical_seq_len - ii - 1})
                 for ii in range(self.historical_seq_len)
             ],
             pd.TimedeltaIndex(
@@ -484,7 +701,7 @@ class FcastDataset(Dataset):
         input_times = np.array(
             [
                 (pd.to_datetime(meta["date"]) + timedelta(days=ii)).to_numpy()
-                for ii in range(-data["x_d"].shape[0], 0)
+                for ii in range(-data[self.sites[0]]["x_d"].shape[0], 0)
             ]
         ).astype(float)
         target_times = np.array(

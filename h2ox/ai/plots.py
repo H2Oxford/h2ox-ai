@@ -54,7 +54,10 @@ def plot_horizon_losses(
 
 
 def plot_timeseries_over_horizon(
-    filepath: Path, preds: xr.Dataset, site_dim: Optional[str] = "site"
+    filepath: Path,
+    preds: xr.Dataset,
+    site_dim: Optional[str] = "site",
+    prediction_dim: str = "sim",
 ):
     for site in np.unique(preds[site_dim].values):
         # make the timeseries plots
@@ -69,7 +72,7 @@ def plot_timeseries_over_horizon(
         for ix, time in enumerate(random_times):
             ax = axs[np.unravel_index(ix, (3, 4))]
             ax.plot(preds_.sel({"date": time})["obs"], label="obs")
-            ax.plot(preds_.sel({"date": time})["sim"], label="sim")
+            ax.plot(preds_.sel({"date": time})[prediction_dim], label=prediction_dim)
             ax.spines["right"].set_visible(False)
             ax.spines["top"].set_visible(False)
 
@@ -87,7 +90,10 @@ def plot_test_preds(
     preds: xr.Dataset,
     test_chunks: List[List[str]],
     site_dim: Optional[str] = "site",
+    main_dim: Optional[str] = "sim",
+    ci_dims: Optional[List[str]] = None,
 ):
+
     cmap = cm.get_cmap("winter_r")
     n_cols = 3
     n_rows = ceil(len(preds["site"]) / n_cols) * len(test_chunks)
@@ -100,19 +106,27 @@ def plot_test_preds(
         )
         for site in preds["site"].data:
 
-            for step in [0, 5, 10, 15, 25, 50, 75, 89]:
+            for step in [5, 15, 25, 50, 75, 89]:
                 # print (site, step)
                 hexcolor = "#" + "".join(
                     f"{int(el*255):02x}" for el in cmap(int(step / 90 * 255))[:3]
                 )
+                # plot main
                 preds.sel({"site": site, "step": step, "date": date_idx}).shift(
                     date=step
-                )["sim"].plot(ax=axs[_ii], c=hexcolor)
+                )[main_dim].plot(ax=axs[_ii], c=hexcolor)
+
+                # plot CI if available
+                if ci_dims is not None:
+                    for dim in ci_dims:
+                        preds.sel({"site": site, "step": step, "date": date_idx}).shift(
+                            date=step
+                        )[dim].plot(ax=axs[_ii], c=hexcolor, ls=":")
 
             preds.sel({"site": site, "step": 0, "date": date_idx})["obs"].plot(
                 ax=axs[_ii], c="#f200ff"
             )
             _ii += 1
 
-    fig.savefig(filepath / "test_timeseries_allsites.png")
+    fig.savefig(filepath)
     plt.close("all")

@@ -182,17 +182,19 @@ def revert_to_levels(
     target_var: str,
 ) -> xr.Dataset:
 
-    for var in ["obs", "sim"]:
-        preds[var] = preds[var].cumsum(dim="step") + data[target_var].sel(
-            {"date": data["date"].isin(preds["date"])}
-        ).isel({"step": 0})
+    for var in ["obs", "sim", "sim-frozen", "sim-mean", "sim-std", "ci-95+", "ci-95-"]:
+        if var in preds.keys():
+            preds[var] = preds[var].cumsum(dim="step") + data[target_var].sel(
+                {"date": data["date"].isin(preds["date"])}
+            ).isel({"step": 0})
 
     return preds
 
 
 def calculate_errors(
     preds: xr.Dataset,
-    var: str,
+    obs_var: str,
+    sim_var: str,
     site_dim: str = "sample",
     horizon_dim: str = "step",
     model_str: str = "s2s",
@@ -216,13 +218,13 @@ def calculate_errors(
             preds.groupby(site_dim)
             .apply(
                 lambda g: g.groupby(horizon_dim).apply(
-                    lambda sg: func(sg["obs"], sg["sim"])
+                    lambda sg: func(sg[obs_var], sg[sim_var])
                 )
             )
             .rename(funcname)
         )
 
-    return xr.merge(errors).expand_dims(model=[model_str]).expand_dims(variable=[var])
+    return xr.merge(errors).expand_dims(model=[model_str])
 
 
 def normalize_data(

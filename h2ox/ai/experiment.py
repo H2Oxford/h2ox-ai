@@ -8,7 +8,7 @@ from sacred import Experiment
 from sacred.observers import FileStorageObserver, GoogleCloudStorageObserver
 
 DEBUG = False
-CONFIG_PATH = Path.cwd() / "conf.yaml"
+CONFIG_PATH = Path.cwd() / "conf-all.yaml"
 GCP_CREDENTIALS_PATH = Path.cwd() / "gcp_credentials.json"
 GCP_CONFIG_PATH = Path.cwd() / "gcp_config.yaml"
 
@@ -16,8 +16,8 @@ GCP_CONFIG_PATH = Path.cwd() / "gcp_config.yaml"
 NAME = "h2ox-ai_" + datetime.now().isoformat()[0:16]
 ex = Experiment(NAME)
 
-logger.info(f"Experiment created with {NAME=}")
-ex.observers.append(FileStorageObserver("experiments/sacred"))
+logger.info(f"Experiment created with NAME={NAME}")
+ex.observers.append(FileStorageObserver("experiments_2/sacred"))
 logger.info("Added Observed at ./experiments/sacred/")
 
 
@@ -36,7 +36,7 @@ else:
     logger.info("No GCP configuration or credentials found. Omitting GCS observer.")
 
 ex.add_config(CONFIG_PATH.as_posix())
-logger.info(f"Added {CONFIG_PATH.as_posix()=}")
+logger.info(f"Added CONFIG_PATH={CONFIG_PATH.as_posix()}")
 
 if DEBUG:
     print(f"`experiment.py` BEING CALLED AGAIN {datetime.now().isoformat()[:19]}")

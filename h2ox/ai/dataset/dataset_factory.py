@@ -1,24 +1,25 @@
-from typing import Dict, Any, Union
+import json
 import os
 from datetime import datetime
 from pydoc import locate
-import collections
-from pathlib import Path
+from typing import Any, Dict
+
 import xarray as xr
 import yaml
 from loguru import logger
 from torch.utils.data import Dataset
 
-# def convert_pathlib_opts_to_str(data: Dict[str, Union[Any, Dict]]):
-#     # https://stackoverflow.com/a/1254499/9940782
-#     if isinstance(data, Path):
-#         return data.as_posix()
-#     elif isinstance(data, collections.Mapping):
-#         return dict(map(convert, data.iteritems()))
-#     elif isinstance(data, collections.Iterable):
-#         return type(data)(map(convert, data))
-#     else:
-#         return data
+
+def maybe_load(path):
+    if isinstance(path, str):
+        if os.path.splitext(path)[-1] == ".json":
+            return json.load(open(path))
+        elif os.path.splitext(path)[-1] == ".yaml":
+            return yaml.load(open(path), Loader=yaml.SafeLoader)
+        else:
+            raise NotImplementedError
+    else:
+        return path
 
 
 class DatasetFactory:
@@ -28,6 +29,8 @@ class DatasetFactory:
     ):
         self.cfg = cfg["data_parameters"]
         self.ptds_cfg = cfg["dataset_parameters"]
+
+        self.sites = maybe_load(self.cfg["sites"])
 
     @staticmethod
     def get_site_mapper(data_unit_site_keys, global_site_keys):
@@ -103,13 +106,14 @@ class DatasetFactory:
 
         # data_unit_options: Dict[str, Any]
         for data_unit_name, data_unit_options in self.cfg["data_units"].items():
+
+            site_keys = maybe_load(data_unit_options["site_keys"])
+
             data_unit_instance = locate(data_unit_options["class"])()
             array = data_unit_instance.build(
                 start_datetime=sdt,
                 end_datetime=edt,
-                site_mapper=self.get_site_mapper(
-                    data_unit_options["site_keys"], self.cfg["sites"]
-                ),
+                site_mapper=self.get_site_mapper(site_keys, self.sites),
                 data_unit_name=data_unit_name,
                 **data_unit_options,
             )
@@ -127,6 +131,18 @@ class DatasetFactory:
 
         PTDataset = locate(self.ptds_cfg["pytorch_dataset"])
 
-        ptdataset = PTDataset(data, **self.ptds_cfg)
+        select_sites = maybe_load(self.ptds_cfg["select_sites"])
+
+        sites_edges = maybe_load(self.ptds_cfg["sites_edges"])
+
+        cfg_copy = {
+            kk: vv
+            for kk, vv in self.ptds_cfg.items()
+            if kk not in ["select_sites", "sites_edges"]
+        }
+
+        ptdataset = PTDataset(
+            data, select_sites=select_sites, sites_edges=sites_edges, **cfg_copy
+        )
 
         return ptdataset
