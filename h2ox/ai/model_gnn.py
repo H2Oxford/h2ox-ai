@@ -2,11 +2,11 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import torch
-from blitz.modules import BayesianLSTM
+from blitz.modules import BayesianLinear, BayesianLSTM
 from blitz.utils import variational_estimator
 from torch import nn
 
-from h2ox.ai.dummy_blin import BayesianLinear
+# from h2ox.ai.dummy_blin import BayesianLinear
 from h2ox.ai.gnn import GraphConvolution
 
 
