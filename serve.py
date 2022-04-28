@@ -121,11 +121,8 @@ class H2OxHandler(BaseHandler):
         Extend with your own preprocessing steps as needed
         """
         # shift
-        print("INCOMING")
-        print(data)
-        print(type(data))
         data = copy.deepcopy(data[0])
-        print(type(data))
+
 
         if self.cfg["dataset_parameters"]["variables_difference"] is not None:
             for var in self.cfg["dataset_parameters"]["variables_difference"]:
@@ -415,6 +412,7 @@ class H2OxHandler(BaseHandler):
             raise NotImplementedError
 
         return [results]
+
 
     def handle(self, data, context):
         model_input = self.preprocess(data)
