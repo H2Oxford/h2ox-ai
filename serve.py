@@ -29,9 +29,9 @@ class H2OxHandler(BaseHandler):
         self.manifest = ctx.manifest
 
         # todo: get these from env.
-        self.approach = "sample-paths"
-        self.n_samples = 10
-        self.std_scale = 2
+        self.approach = os.environ.get("SAMPLE_METHOD", "sample-paths")
+        self.n_samples = os.environ.get("MC_N_SAMPLES", 10)
+        self.std_scale = os.environ.get("STD_SCALE", 2)
 
         properties = ctx.system_properties
         print(properties)
@@ -121,7 +121,11 @@ class H2OxHandler(BaseHandler):
         Extend with your own preprocessing steps as needed
         """
         # shift
-        data = copy.deepcopy(data)
+        print("INCOMING")
+        print(data)
+        print(type(data))
+        data = copy.deepcopy(data[0])
+        print(type(data))
 
         if self.cfg["dataset_parameters"]["variables_difference"] is not None:
             for var in self.cfg["dataset_parameters"]["variables_difference"]:
@@ -403,10 +407,14 @@ class H2OxHandler(BaseHandler):
                 results[date]["lower"] = results[date]["lower"] * stretch + mins
                 results[date]["mean"] = results[date]["mean"] * stretch + mins
 
+            for date in results.keys():
+                for band in results[date].keys():
+                    results[date][band] = results[date][band].detach().numpy().tolist()
+
         else:
             raise NotImplementedError
 
-        return results
+        return [results]
 
     def handle(self, data, context):
         model_input = self.preprocess(data)
