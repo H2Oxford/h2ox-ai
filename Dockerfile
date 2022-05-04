@@ -19,6 +19,7 @@ RUN pip install /home/model-server/h2ox
 # create torchserve configuration file
 RUN printf "\nservice_envelope=json" >> /home/model-server/config.properties
 RUN printf "\nnumber_of_gpu=0" >> /home/model-server/config.properties
+RUN printf "\ndefault_workers_per_model=1" >> /home/model-server/config.properties
 RUN printf "\ninference_address=http://0.0.0.0:7080" >> /home/model-server/config.properties
 RUN printf "\nmanagement_address=http://0.0.0.0:7081" >> /home/model-server/config.properties
 USER model-server
@@ -41,6 +42,6 @@ CMD ["torchserve", \
      "--start", \
      "--ts-config=/home/model-server/config.properties", \
      "--models", \
-     "kaveri=kaveri.mar", \
+     "all", \
      "--model-store", \
      "/home/model-server/models"]
