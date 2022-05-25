@@ -1,0 +1,236 @@
+{
+  "data_parameters": {
+    "cache_path": "/home/lucas/h2ox-ai/data/data_ganga_damodar.nc",
+    "data_units": {
+      "chirps": {
+        "class": "h2ox.ai.dataset.data_units.ZRSpatialDataUnit",
+        "datetime_col": "time",
+        "end_step": null,
+        "gdf_path": "/home/lucas/h2ox-ai/data/all_sites.geojson",
+        "lat_col": "latitude",
+        "lon_col": "longitude",
+        "site_col": "name",
+        "site_keys": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+        "start_step": null,
+        "step_size": null,
+        "steps_key": null,
+        "variable_keys": [
+          "precip"
+        ],
+        "z_address": "gs://oxeo-chirps/build2",
+        "zarr_mapper": "h2ox.ai.dataset.utils.gcsfs_mapper"
+      },
+      "doy": {
+        "class": "h2ox.ai.dataset.data_units.SynthTrigDoY",
+        "end_step": 91,
+        "sin_or_cos": [
+          "sin",
+          "cos"
+        ],
+        "site_keys": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+        "start_step": 0,
+        "step_size": 1
+      },
+      "era5land": {
+        "class": "h2ox.ai.dataset.data_units.ZRSpatialDataUnit",
+        "datetime_col": "time",
+        "end_step": null,
+        "gdf_path": "/home/lucas/h2ox-ai/data/all_sites.geojson",
+        "lat_col": "latitude",
+        "lon_col": "longitude",
+        "site_col": "name",
+        "site_keys": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+        "start_step": null,
+        "step_size": null,
+        "steps_key": null,
+        "variable_keys": [
+          "t2m",
+          "tp"
+        ],
+        "z_address": "gs://oxeo-era5/build",
+        "zarr_mapper": "h2ox.ai.dataset.utils.gcsfs_mapper"
+      },
+      "ones": {
+        "class": "h2ox.ai.dataset.data_units.SynthOnes",
+        "end_step": 91,
+        "site_keys": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+        "start_step": 0,
+        "step_size": 1
+      },
+      "seq": {
+        "class": "h2ox.ai.dataset.data_units.SynthSeq",
+        "end_step": 91,
+        "site_keys": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+        "start_step": 0,
+        "step_size": 1
+      },
+      "targets": {
+        "bq_address": "oxeo-main.wave2web.reservoir-data",
+        "class": "h2ox.ai.dataset.data_units.BQDataUnit",
+        "datetime_col": "DATETIME",
+        "site_col": "RESERVOIR_NAME",
+        "site_keys": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+        "variable_keys": [
+          "DATETIME",
+          "WATER_VOLUME",
+          "RESERVOIR_NAME"
+        ]
+      },
+      "tigge": {
+        "class": "h2ox.ai.dataset.data_units.ZRSpatialDataUnit",
+        "datetime_col": "time",
+        "end_step": 15,
+        "gdf_path": "/home/lucas/h2ox-ai/data/all_sites.geojson",
+        "lat_col": "latitude",
+        "lon_col": "longitude",
+        "site_col": "name",
+        "site_keys": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+        "start_step": 0,
+        "step_size": 1,
+        "steps_key": "step",
+        "variable_keys": [
+          "t2m",
+          "tp"
+        ],
+        "z_address": "gs://oxeo-forecasts/ecmwf-forecast",
+        "zarr_mapper": "h2ox.ai.dataset.utils.gcsfs_mapper"
+      }
+    },
+    "end_data_date": "2022-01-01",
+    "sites": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+    "start_data_date": "2010-01-01"
+  },
+  "dataset_parameters": {
+    "drop_duplicate_vars": [
+      "doy_cos",
+      "doy_sin"
+    ],
+    "forecast_horizon": 14,
+    "forecast_variables": [
+      "tigge_t2m",
+      "tigge_tp",
+      "doy_cos",
+      "doy_sin"
+    ],
+    "future_horizon": 76,
+    "future_variables": [
+      "doy_cos",
+      "doy_sin"
+    ],
+    "historic_variables": [
+      "tigge_t2m",
+      "chirps_precip",
+      "targets_WATER_VOLUME",
+      "doy_cos",
+      "doy_sin"
+    ],
+    "historical_seq_len": 90,
+    "include_doy": true,
+    "max_consecutive_nan": 20,
+    "norm_difference": true,
+    "normalise": [
+      "targets_WATER_VOLUME"
+    ],
+    "ohe_or_multi": "sitewise",
+    "pytorch_dataset": "h2ox.ai.dataset.dataset.FcastDataset",
+    "select_sites": "/home/lucas/h2ox-ai/data/ganga_damodar.json",
+    "shift_target": false,
+    "sites_edges": "/home/lucas/h2ox-ai/data/all_edges.json",
+    "std_norm": [
+      "chirps_precip",
+      "tigge_tp"
+    ],
+    "target_difference": true,
+    "target_var": [
+      "targets_WATER_VOLUME"
+    ],
+    "test_date_ranges": [
+      [
+        "2011-01-01",
+        "2011-12-31"
+      ],
+      [
+        "2020-01-01",
+        "2020-12-31"
+      ]
+    ],
+    "train_date_ranges": [
+      [
+        "2010-01-01",
+        "2010-12-31"
+      ],
+      [
+        "2012-01-01",
+        "2012-12-31"
+      ],
+      [
+        "2014-01-01",
+        "2017-12-31"
+      ],
+      [
+        "2019-01-01",
+        "2019-12-31"
+      ],
+      [
+        "2021-01-01",
+        "2021-12-31"
+      ]
+    ],
+    "val_date_ranges": [
+      [
+        "2013-01-01",
+        "2013-12-31"
+      ],
+      [
+        "2018-01-01",
+        "2018-12-31"
+      ]
+    ],
+    "variables_difference": [
+      "tigge_tp"
+    ],
+    "zscore": [
+      "tigge_t2m"
+    ]
+  },
+  "model_parameters": {
+    "bayesian_linear": false,
+    "bayesian_lstm": true,
+    "daig": true,
+    "digraph": true,
+    "dropout": 0.25,
+    "hidden_size": 12,
+    "lstm_params": {
+      "bias": true,
+      "freeze": false,
+      "peephole": false,
+      "posterior_mu_init": 0,
+      "posterior_rho_init": -3,
+      "prior_pi": 1.0,
+      "prior_sigma_1": 0.1,
+      "prior_sigma_2": 0.002
+    },
+    "model_str": "gnn",
+    "num_layers": 1
+  },
+  "name": "test",
+  "path_to_runs_folder": null,
+  "seed": 756581607,
+  "training_parameters": {
+    "batch_size": 200,
+    "checkpoint_every_n": 10,
+    "cleanup": false,
+    "epochs_loss_cliff": 25,
+    "eval_test": false,
+    "learning_rate": 0.025,
+    "log_every_n_steps": 10,
+    "n_epochs": 150,
+    "num_workers": 8,
+    "random_val_split": true,
+    "schedule_params": {
+      "gamma": 0.8,
+      "step_size": 20
+    },
+    "validate_every_n": 10
+  }
+}
