@@ -281,6 +281,11 @@ class H2OxHandler(BaseHandler):
             return torch.diff(
                 arr, dim=dim, prepend=torch.zeros(*list(shp)).to(arr.device)
             )
+        
+        # optionally reshape
+        for _date in inference_output.keys():
+            if len(inference_output[_date].shape)==2:
+                inference_output[_date] = inference_output[_date].unsqueeze(-1)
 
         # target_difference
         if self.cfg["dataset_parameters"]["target_difference"]:
@@ -423,17 +428,18 @@ class H2OxHandler(BaseHandler):
 if __name__ == "__main__":
 
     from ts.context import Context
+    import pickle
 
     ctx = Context(
-        model_name="kaveri",
-        model_dir="/home/lucas/h2ox-ai/models/",
+        model_name="extras",
+        model_dir="/home/jupyter/PIPELINE/ts/h2ox-ai/models",
         manifest={
             "model": {
-                "serializedFile": "kaveri.pt",
+                "serializedFile": "extras.pt",
             }
         },
         batch_size=8,
-        gpu="0",
+        gpu=None,
         mms_version=0.1,
         limit_max_image_pixels=True,
     )
@@ -442,11 +448,12 @@ if __name__ == "__main__":
 
     inst.initialize(ctx)
 
-    sample_data = json.load(open("./data/kaveri_sample.json"))
+    sample_data = [pickle.load(open('./extras_sample.pkl','rb'))]
+    #sample_data = json.load(open("./data/kaveri_sample.json"))
 
     inps = inst.preprocess(sample_data)
 
-    # print (inps)
+    print (inps)
     y_hat = inst.inference(inps)
 
     print("yhat", y_hat)
