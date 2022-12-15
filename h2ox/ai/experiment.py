@@ -8,7 +8,7 @@ from sacred import Experiment
 from sacred.observers import FileStorageObserver, GoogleCloudStorageObserver
 
 DEBUG = False
-CONFIG_PATH = Path.cwd() / "conf-all.yaml"
+CONFIG_PATH = Path.cwd() / "conf" / "conf-extras.yaml"
 GCP_CREDENTIALS_PATH = Path.cwd() / "gcp_credentials.json"
 GCP_CONFIG_PATH = Path.cwd() / "gcp_config.yaml"
 
@@ -17,7 +17,7 @@ NAME = "h2ox-ai_" + datetime.now().isoformat()[0:16]
 ex = Experiment(NAME)
 
 logger.info(f"Experiment created with NAME={NAME}")
-ex.observers.append(FileStorageObserver("experiments_2/sacred"))
+ex.observers.append(FileStorageObserver("experiments_no_gconv/sacred"))
 logger.info("Added Observed at ./experiments/sacred/")
 
 

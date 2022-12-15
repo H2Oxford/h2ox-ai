@@ -1,0 +1,147 @@
+# Experiment Parameters
+name: "test"
+path_to_runs_folder:
+
+# dataset parameters - paramters to the PyTorch dataset, not requiring data cache refresh
+dataset_parameters:
+    pytorch_dataset: h2ox.ai.dataset.dataset.FcastDataset
+    normalise: ["targets_WATER_VOLUME"]
+    zscore: ["tigge_t2m"]
+    std_norm: ["chirps_precip","tigge_tp"]
+    drop_duplicate_vars: ["doy_cos","doy_sin"]
+    historical_seq_len: 90
+    forecast_horizon: 14
+    future_horizon: 76
+    include_doy: true
+    ohe_or_multi: "sitewise"
+    max_consecutive_nan: 20
+    select_sites: /home/lucas/h2ox-ai/data/godavari.json
+    sites_edges: /home/lucas/h2ox-ai/data/all_edges.json
+    target_var: ["targets_WATER_VOLUME"]
+    target_difference: true
+    variables_difference: ["tigge_tp"]
+    norm_difference: true
+    shift_target: false
+    historic_variables: ["tigge_t2m","chirps_precip","targets_WATER_VOLUME","doy_cos","doy_sin"]
+    forecast_variables: ["tigge_t2m", "tigge_tp","doy_cos","doy_sin"]
+    future_variables: ["doy_cos","doy_sin"]
+    train_date_ranges: [["2010-01-01","2010-12-31"],["2012-01-01","2012-12-31"],["2014-01-01","2017-12-31"],["2019-01-01","2019-12-31"],["2021-01-01","2021-12-31"]] # 2010,2012,2014-2017,2019,2021-2022
+    val_date_ranges: [["2013-01-01","2013-12-31"],["2018-01-01","2018-12-31"]] # 2013, 2018
+    test_date_ranges: [["2011-01-01","2011-12-31"],["2020-01-01","2020-12-31"]] #2011, 2020
+
+model_parameters:
+    model_str: gnn
+    hidden_size: 12
+    graph_conv: false
+    daig: true
+    digraph: true
+    num_layers: 1
+    dropout: 0.25
+    bayesian_lstm: true
+    bayesian_linear: false
+    lstm_params:
+        freeze: false
+        bias: true
+        peephole: false
+        prior_pi: 1.
+        prior_sigma_1: 0.1
+        prior_sigma_2: 0.002
+        posterior_mu_init: 0
+        posterior_rho_init: -3
+
+training_parameters:
+    # Training Parameters
+    num_workers: 8
+    random_val_split: true
+    log_every_n_steps: 10
+    checkpoint_every_n: 10
+    eval_test: false
+    batch_size: 75
+    n_epochs: 50
+    epochs_loss_cliff: 25
+    validate_every_n: 10
+    cleanup: false
+    learning_rate: 0.025
+    schedule_params:
+        step_size: 20
+        gamma: 0.8
+
+
+# data parameters - build/load a cached dataset
+data_parameters:
+    cache_path: /home/lucas/h2ox-ai/data/data_godavari.nc
+    sites: /home/lucas/h2ox-ai/data/godavari.json
+    start_data_date: "2010-01-01"
+    end_data_date: "2022-01-01"
+    data_units:
+      seq:
+        class: h2ox.ai.dataset.data_units.SynthSeq
+        site_keys: /home/lucas/h2ox-ai/data/godavari.json
+        start_step: 0
+        end_step: 91
+        step_size: 1
+      ones:
+        class: h2ox.ai.dataset.data_units.SynthOnes
+        site_keys: /home/lucas/h2ox-ai/data/godavari.json
+        start_step: 0
+        end_step: 91
+        step_size: 1
+      doy:
+        class: h2ox.ai.dataset.data_units.SynthTrigDoY
+        site_keys: /home/lucas/h2ox-ai/data/godavari.json
+        sin_or_cos: [sin,cos]
+        start_step: 0
+        end_step: 91
+        step_size: 1
+      tigge:
+        class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+        variable_keys: [t2m,tp]
+        gdf_path: /home/lucas/h2ox-ai/data/all_sites.geojson
+        site_col: name
+        site_keys: /home/lucas/h2ox-ai/data/godavari.json
+        datetime_col: time
+        z_address: gs://oxeo-forecasts/ecmwf-forecast
+        steps_key: step
+        start_step: 0
+        end_step: 15
+        step_size: 1
+        zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+        lat_col: latitude
+        lon_col: longitude
+      era5land:
+        class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+        variable_keys: [t2m,tp]
+        gdf_path: /home/lucas/h2ox-ai/data/all_sites.geojson
+        site_col: name
+        site_keys: /home/lucas/h2ox-ai/data/godavari.json
+        datetime_col: time
+        z_address: gs://oxeo-era5/build
+        steps_key: null
+        start_step: null
+        end_step: null
+        step_size: null
+        zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+        lat_col: latitude
+        lon_col: longitude
+      chirps:
+        class: h2ox.ai.dataset.data_units.ZRSpatialDataUnit
+        variable_keys: [precip]
+        gdf_path: /home/lucas/h2ox-ai/data/all_sites.geojson
+        site_col: name
+        site_keys: /home/lucas/h2ox-ai/data/godavari.json
+        datetime_col: time
+        z_address: gs://oxeo-chirps/build2
+        steps_key: null
+        start_step: null
+        end_step: null
+        step_size: null
+        zarr_mapper: h2ox.ai.dataset.utils.gcsfs_mapper
+        lat_col: latitude
+        lon_col: longitude
+      targets:
+        class: h2ox.ai.dataset.data_units.BQDataUnit
+        variable_keys: [DATETIME, WATER_VOLUME, RESERVOIR_NAME]
+        site_col: RESERVOIR_NAME
+        datetime_col: DATETIME
+        bq_address: oxeo-main.wave2web.reservoir-data
+        site_keys: /home/lucas/h2ox-ai/data/godavari.json
