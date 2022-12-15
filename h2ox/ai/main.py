@@ -156,6 +156,7 @@ def main(
             sites_edges=maybe_load(dataset_parameters["sites_edges"]),
             flow_std=std_target,
             device=device,
+            graph_conv=model_parameters["graph_conv"],
             hidden_size=model_parameters["hidden_size"],
             num_layers=model_parameters["num_layers"],
             dropout=model_parameters["dropout"],
@@ -171,7 +172,9 @@ def main(
 
     # setup tensorboard writer
     writer = SummaryWriter(
-        os.path.join(os.getcwd(), "experiments_2", "tensorboard", f"tb-{_run._id}")
+        os.path.join(
+            os.getcwd(), "experiments_no_gconv", "tensorboard", f"tb-{_run._id}"
+        )
     )
 
     # train

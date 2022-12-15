@@ -239,6 +239,7 @@ class LayeredBayesianGraphLSTM(nn.Module):
         future_input_size: int,
         hidden_size: int,
         target_size: int,
+        graph_conv: bool = True,
         digraph: bool = False,
         diag: bool = True,
         num_layers: int = 1,
@@ -261,6 +262,11 @@ class LayeredBayesianGraphLSTM(nn.Module):
         # TODO: calculate this from the data too!
         self.target_horizon = forecast_horizon + future_horizon
         self.target_size = target_size
+        self.graph_conv = graph_conv
+
+        print("GRAPH CONV", graph_conv)
+
+        print("DIGRAPH", digraph)
 
         if lstm_params is None:
             lstm_params = {}
@@ -354,23 +360,25 @@ class LayeredBayesianGraphLSTM(nn.Module):
                 }
             )
 
-        self.gnn = GraphConvolution(hidden_size, hidden_size, bias=True)
+        if self.graph_conv:
 
-        self.adj = np.zeros((len(sites), len(sites)), dtype=np.float32)
+            self.gnn = GraphConvolution(hidden_size, hidden_size, bias=True)
 
-        for s1, s2 in sites_edges:
-            if s1 in sites and s2 in sites:
-                self.adj[sites.index(s1), sites.index(s2)] = 1
+            self.adj = np.zeros((len(sites), len(sites)), dtype=np.float32)
 
-        if diag:
-            self.adj += np.diag(np.ones(len(sites)))
-
-        if digraph:
             for s1, s2 in sites_edges:
                 if s1 in sites and s2 in sites:
-                    self.adj[sites.index(s2), sites.index(s1)] = -1
+                    self.adj[sites.index(s1), sites.index(s2)] = 1
 
-        self.adj = torch.from_numpy(self.adj).to(device)
+            if diag:
+                self.adj += np.diag(np.ones(len(sites)))
+
+            if digraph:
+                for s1, s2 in sites_edges:
+                    if s1 in sites and s2 in sites:
+                        self.adj[sites.index(s2), sites.index(s1)] = -1
+
+            self.adj = torch.from_numpy(self.adj).to(device)
 
     def absflow(self, flows, site):
         return flows * self.flow_std[site]
@@ -451,13 +459,17 @@ class LayeredBayesianGraphLSTM(nn.Module):
                 )
 
             # graph convolve
-            graphed = self.gnn(output_t, self.adj)
+            if self.graph_conv:
+                graphed = self.gnn(output_t, self.adj)
+            else:
+                graphed = output_t
 
             flows = torch.zeros(batch_size, len(self.sites), 1).to(self.device)
             for ii_s, site in enumerate(self.sites):
                 flows[:, ii_s, :] = self.headers_out[site](graphed[:, ii_s, :])
 
-            outputs[:, t, :] = flows.squeeze()
+            # print ('flows shape',flows.shape, flows.squeeze(2).shape)
+            outputs[:, t, :] = flows.squeeze(2)
 
             # add target back to outputs
             site_levels = {
@@ -488,13 +500,17 @@ class LayeredBayesianGraphLSTM(nn.Module):
                 )
 
             # graph convolve
-            graphed = self.gnn(output_t, self.adj)
+            if self.graph_conv:
+                graphed = self.gnn(output_t, self.adj)
+            else:
+                graphed = output_t
 
             flows = torch.zeros(batch_size, len(self.sites), 1).to(self.device)
             for ii_s, site in enumerate(self.sites):
                 flows[:, ii_s, :] = self.headers_out[site](graphed[:, ii_s, :])
 
-            outputs[:, t, :] = flows.squeeze()
+            # print (flows.shape)
+            outputs[:, t, :] = flows.squeeze(2)
 
             # add target back to outputs
             site_levels = {
@@ -502,7 +518,9 @@ class LayeredBayesianGraphLSTM(nn.Module):
                 for ii_s, site in enumerate(self.sites)
             }
 
-        return outputs
+        # print('out sgape',outputs.shape)
+
+        return outputs  # .squeeze()
 
 
 def initialise_gnn(
@@ -511,6 +529,7 @@ def initialise_gnn(
     sites_edges: List[List[str]],
     flow_std: Dict[str, float],
     device: str,
+    graph_conv: bool = True,
     diag: bool = True,
     digraph: bool = False,
     hidden_size: int = 6,
@@ -535,17 +554,11 @@ def initialise_gnn(
     if lstm_params is None:
         lstm_params = {}
 
-    print("forecast_horizon", forecast_horizon)
-    print("future_horizon", future_horizon)
-    print("historic", historical_input_size)
-    print("forecast", forecast_input_size)
-    print("future", future_input_size)
-    print("target", target_size)
-
     model = LayeredBayesianGraphLSTM(
         sites=sites,
         sites_edges=sites_edges,
         flow_std=flow_std,
+        graph_conv=graph_conv,
         digraph=digraph,
         diag=diag,
         future_horizon=future_horizon,
