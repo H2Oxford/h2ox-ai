@@ -233,13 +233,6 @@ class FcastDataset(Dataset):
             .transpose("date", "target_roll", "global_sites", "variable")
         )
 
-        print("historic")
-        print(historic)
-        print("forecast")
-        print(forecast)
-        print("future")
-        print(future)
-
         idxs = historic["date"].data[np.isin(historic["date"].data, valid_dates)]
 
         self.historic = historic.sel({"date": idxs})
@@ -446,17 +439,6 @@ class FcastDataset(Dataset):
         logger.info("soft data transforms - build data Dictionary")
         data_ii = 0
 
-        # print ('DEMO_DATA')
-        # print ('dt', idxs[0])
-        # print('hist')
-        # print (self.historic.data[0,...])
-        # print ('forecast')
-        # print (self.forecast.data[0,...])
-        # print ('future')
-        # print (self.future.data[0,...])#
-        # print('target')
-        # print (self.targets.data[0,...])
-
         for ii, idx in enumerate(idxs):
 
             # final check on nan (this isn't great but am getting segfaults from interpolate_na
@@ -521,9 +503,6 @@ class FcastDataset(Dataset):
                         .transpose(1, 0, 2)
                     )
 
-                    # print ('Y SHAPE DL')
-                    # print (self.all_data[data_ii]["y"].shape)
-
                     if isinstance(idx, tuple):
                         self.sample_lookup[data_ii] = dict(
                             zip(self.metadata_columns, idx)
@@ -536,17 +515,6 @@ class FcastDataset(Dataset):
                     data_ii += 1
             else:
                 pass
-
-        # print ('ALL DATA KEYS',len(self.all_data.keys()))
-        # print("SAMPLE ITEM")
-        # print(self.all_data[0])
-
-        # for ii in np.random.choice(len(idxs),3):
-        #    #print (self.all_data[ii])
-        #    for kk in ['x_d','x_f','x_ff','y']:
-        #        print (kk, self.all_data[ii][kk].shape, self.all_data[ii][kk].max(axis=0), self.all_data[ii][kk].min(axis=0), self.all_data[ii][kk].mean(axis=0))
-
-        #    print ('y stuff', self.all_data[ii]['y'].std(axis=0))
 
         self.n_samples = len(idxs)
 

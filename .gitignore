@@ -10,6 +10,8 @@ data/cache.yaml
 data/raw/h2ox_reservoirs.csv
 data/raw/bigquery_24012022_historic.csv
 data/raw/bigquery_24012022_original.csv
+data/*
+experiments_*/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
