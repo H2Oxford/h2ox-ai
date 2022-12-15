@@ -86,7 +86,7 @@ def train(
 
             data = move_to(data, device)
 
-            data["y"] = data["y"].squeeze().to(device)
+            data["y"] = data["y"].squeeze().to(device)  # .unsqueeze(-1) #<- single site
             # Y = torch.zeros(data['y'].shape).to(device)
             # yhat = model.forward_deterministic(X).to(device)
 
@@ -266,6 +266,8 @@ def validate(
         # forward pass - deterministic
         yhat = model.forward(data).to(device)
         y = data["y"]
+
+        # print ('shapes',y.shape,yhat.shape)
 
         # calculate loss
         if "weighted_mse_loss" in loss_fn.__repr__():

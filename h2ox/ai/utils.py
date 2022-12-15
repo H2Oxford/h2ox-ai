@@ -53,6 +53,10 @@ def _eval_data_to_ds(
     time = np.concatenate(eval_data["time"], axis=0)
     init_time = np.concatenate(eval_data["init_time"], axis=0)
 
+    for kk in ds_data.keys():
+        if len(ds_data[kk].shape) == 2:
+            ds_data[kk] = np.expand_dims(ds_data[kk], -1)
+
     if site_dim in eval_data.keys():
         # is one-hot-encoded, deshape:
         sites = np.concatenate(eval_data[site_dim], axis=0)
@@ -61,7 +65,6 @@ def _eval_data_to_ds(
                 [ds_data[kk][sites == site, :] for site in np.unique(sites)], axis=-1
             )
 
-        # assert (np.diff(init_time,axis=1)==timedelta(days=0)).all(), ""
         time = time[:, :, 0]
         init_time = init_time[:, 0]
 
@@ -73,6 +76,12 @@ def _eval_data_to_ds(
 
     ds_data = {kk: ((time_dim, horizon_dim, "site"), vv) for kk, vv in ds_data.items()}
     ds_data["valid_time"] = ((time_dim, horizon_dim), time)
+
+    # print ('coords shape')
+    # print({kk:vv.shape for kk,vv in coords.items()})
+
+    # print('ds data')
+    # print ([(kk,vv[0],vv[1].shape) for kk,vv in ds_data.items()])
 
     ds = xr.Dataset(
         ds_data,
