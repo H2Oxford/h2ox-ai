@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -433,8 +434,6 @@ class H2OxHandler(BaseHandler):
 
 
 if __name__ == "__main__":
-
-    import pickle
 
     from ts.context import Context
 
