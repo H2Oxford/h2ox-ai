@@ -25,7 +25,7 @@ def main():
 
     w2w_inference(today, slackmessenger)
 
-    return 1
+    return f"Done inference {today.isoformat()}", 200
 
 
 def w2w_inference(today: datetime, slackmessenger: SlackMessenger):
