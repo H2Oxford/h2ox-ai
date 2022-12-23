@@ -2,6 +2,8 @@ import json
 import os
 from datetime import datetime
 
+from loguru import logger
+
 from h2ox.ai.inference import local_inference
 from h2ox.ai.slackbot import SlackMessenger
 
@@ -23,7 +25,8 @@ def main():
     else:
         slackmessenger = None
 
-    w2w_inference(today, slackmessenger)
+    msg, code = w2w_inference(today, slackmessenger)
+    logger.info("made it here")
 
     return f"Done inference {today.isoformat()}", 200
 
@@ -41,4 +44,4 @@ def w2w_inference(today: datetime, slackmessenger: SlackMessenger):
 
 if __name__ == "__main__":
     main()
-    exit()
+    logger.info("made it there")
