@@ -41,3 +41,4 @@ def w2w_inference(today: datetime, slackmessenger: SlackMessenger):
 
 if __name__ == "__main__":
     main()
+    exit()
