@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -12,6 +13,10 @@ from ts.context import Context
 
 from h2ox.ai.data_units import SynthTrigDoY
 from h2ox.ai.serve import H2OxHandler
+
+# pipe logger to sys.stdout specifically - no error in cloud console
+logger.remove()
+logger.add(sys.stdout, colorize=False, format="{time:YYYYMMDDHHmmss}|{level}|{message}")
 
 
 def reshape_data(data_dict):

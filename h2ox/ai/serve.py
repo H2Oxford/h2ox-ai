@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+import sys
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,10 @@ from loguru import logger
 from ts.torch_handler.base_handler import BaseHandler
 
 from h2ox.ai.model_gnn import initialise_gnn
+
+# pipe logger to sys.stdout specifically - no error in cloud console
+logger.remove()
+logger.add(sys.stdout, colorize=False, format="{time:YYYYMMDDHHmmss}|{level}|{message}")
 
 
 class H2OxHandler(BaseHandler):
