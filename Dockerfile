@@ -28,8 +28,8 @@ RUN printf "\nmanagement_address=http://0.0.0.0:7081" >> /home/model-server/conf
 USER model-server
 
 # expose health and prediction listener ports from the image
-EXPOSE 7080
-EXPOSE 7081
+# EXPOSE 7080
+# EXPOSE 7081
 
 WORKDIR $APP_HOME
 

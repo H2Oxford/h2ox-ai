@@ -403,6 +403,9 @@ def local_inference(today, basin_networks):
 
             msg[basin_network] = f"pushed local: {len(result_df)}"
 
+            del inst
+            del ctx
+
         else:
             logger.info(f"{basin_network} up-to-date!")
             msg[basin_network] = "up-to-date"

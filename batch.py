@@ -1,3 +1,4 @@
+import gc
 import json
 import os
 from datetime import datetime
@@ -45,3 +46,4 @@ def w2w_inference(today: datetime, slackmessenger: SlackMessenger):
 if __name__ == "__main__":
     main()
     logger.info("made it there")
+    gc.collect()
